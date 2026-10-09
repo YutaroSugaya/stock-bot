@@ -1,0 +1,6 @@
+# spec-sync-allowlist.txt — docs-sync-check.sh が無視する変更ファイルの regex(1 行 1 つ)。
+# spec(契約)を変えない編集(typo / log 文言 / 整形 / コメント)で docs 更新を強制しないため。
+# `#` 始まりはコメント。行内 ` #` 以降もコメント。*_test.go は hook 側で自動除外。
+#
+# 例: ログ文言だけ変えた特定ファイルを除外したい場合に追記する。
+# backend/internal/app/counters\.go    # カウンタ名追加は spec 変更ではない、等

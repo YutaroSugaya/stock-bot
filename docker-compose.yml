@@ -1,0 +1,45 @@
+# ローカル Postgres — live 永続化用。
+#
+# live(mode: live_config)は in-memory を拒否する(RequireDurableBackend): 再起動で
+# daily-loss 台帳・凍結 config・保有日数・自 bot の建玉が消えるため。
+#
+# データは Mac 側のフォルダ ~/.stockbot/pgdata に置く(bind mount にして Docker Desktop の
+# 作り直しで台帳が消えないようにする)。
+# Desktop 配下に置かないのは launchd から TCC で触れないため。
+#
+# 使い方:
+#   docker compose up -d db
+#   export STOCKBOT_DATABASE_URL="postgres://stockbot:stockbot@localhost:5434/stockbot?sslmode=disable"
+#   STOCKBOT_HUMAN_APPROVED_DB_WRITE=1 make migrate-up      # スキーマ適用(人間承認ゲート)
+#   make migrate-status                                     # 適用確認
+#
+# 注意: これは開発/自分用のローカル DB。live 稼働中は止めない(CLAUDE.md)。本番運用では
+# パスワードを env / secret に置き換えること。
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: stockbot-postgres
+    environment:
+      POSTGRES_USER: stockbot
+      POSTGRES_PASSWORD: stockbot
+      POSTGRES_DB: stockbot
+    ports:
+      # HOST 5434 — 既定の 5432 を使うと同じマシンの別の postgres へ誤接続しうるので「別ポート」にする。
+      #
+      # **127.0.0.1 に固定する**。"5434:5432" だと Docker は 0.0.0.0(実際には
+      # IPv6 ワイルドカード = デュアルスタック)で publish するため、同じネットワークの全機器と、
+      # グローバル IPv6 を持つマシンなら外からも(IPv6 に NAT は無く、守りはルーターの
+      # フィルタだけ)postgres://stockbot:stockbot@<host>:5434/stockbot で forward 台帳に
+      # 到達できる。台帳の改竄は edge-judge → 実弾昇格ゲートの汚染に直結する。
+      #
+      # 既定のパスワードは開発用。変えるときは ALTER USER(人間承認ゲート付きの DB 書込)と
+      # .env の DSN を同時に更新する。loopback 限定なので同じマシンの外からは到達できない。
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - ${HOME}/.stockbot/pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockbot -d stockbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

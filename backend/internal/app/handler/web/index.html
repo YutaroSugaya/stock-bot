@@ -1,0 +1,1245 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>stock-bot dashboard</title>
+<style>
+  :root { --bg:#0e1116; --panel:#171c24; --line:#262d38; --fg:#e6edf3; --muted:#8b98a8;
+          --green:#2ea043; --red:#e5534b; --amber:#d29922; --accent:#388bfd; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans",sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:5; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  .pill { padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .pill.paper { background:#1f2a18; color:var(--green); }
+  .pill.live { background:#2a1818; color:var(--red); }
+  .pill.muted { background:#1c2230; color:var(--muted); }
+  .pill.accent { background:#10243f; color:var(--accent); }
+  .grow { flex:1; }
+  button { font:inherit; font-weight:600; border:1px solid var(--line); border-radius:8px; padding:7px 14px; cursor:pointer; background:#1c2230; color:var(--fg); }
+  select { font:inherit; font-size:12px; border:1px solid var(--line); border-radius:8px; padding:2px 8px; background:#1c2230; color:var(--fg); }
+  button.stop { background:#3a1d1b; border-color:#5e2a26; color:#ff9b94; }
+  button.resume { background:#16271a; border-color:#27502f; color:#7ee787; }
+  button:active { transform:translateY(1px); }
+  main { padding:20px; max-width:1180px; margin:0 auto; }
+  .banner { padding:12px 16px; border-radius:10px; margin-bottom:18px; font-weight:600; display:none; }
+  .banner.on { display:block; background:#2a1818; border:1px solid #5e2a26; color:#ff9b94; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; margin-bottom:22px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .card .label { color:var(--muted); font-size:12px; }
+  .card .val { font-size:22px; font-weight:700; margin-top:4px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:22px 0 10px; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
+  th { color:var(--muted); font-size:12px; font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  .side-BUY { color:var(--green); font-weight:700; }
+  .side-SELL { color:var(--red); font-weight:700; }
+  .empty { color:var(--muted); padding:14px; }
+  footer { color:var(--muted); font-size:12px; padding:10px 20px; border-top:1px solid var(--line); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  .dot.ok { background:var(--green); } .dot.bad { background:var(--red); }
+  /* 狙い (focus) panel */
+  .focus { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:6px; }
+  .focus.armed { border-color:#27502f; box-shadow:inset 0 0 0 1px #1c3a24; }
+  /* 空売り。買いと同じ戦略名で並ぶので色で分ける。 */
+  .badge.sell { background:#3a1c24; color:#ff9db0; border-color:#5a2a36; }
+  .focus .top { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .focus .sym { font-size:24px; font-weight:800; letter-spacing:.02em; }
+  .focus .strat { color:var(--accent); font-weight:700; }
+  td.strat { color:var(--accent); font-weight:600; }
+  .focus .why { color:var(--muted); margin-top:2px; }
+  .badge { padding:2px 9px; border-radius:6px; font-size:12px; font-weight:700; }
+  .badge.fire { background:#16271a; color:#7ee787; }
+  .badge.wait { background:#2a2418; color:var(--amber); }
+  .checks { margin:12px 0 0; display:grid; gap:6px; }
+  .chk { display:flex; align-items:center; gap:10px; padding:7px 10px; background:#10141b; border:1px solid var(--line); border-radius:8px; }
+  .chk .ic { width:18px; text-align:center; font-weight:800; }
+  .chk.met .ic { color:var(--green); } .chk.miss .ic { color:var(--muted); }
+  .chk .lab { flex:1; } .chk .got { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .scorebar { height:6px; background:#10141b; border-radius:4px; overflow:hidden; margin-top:4px; width:160px; }
+  .scorebar > i { display:block; height:100%; background:var(--accent); }
+  .tag { font-size:11px; color:var(--muted); }
+  .star { color:var(--green); }
+  /* 未約定(売買停止/気配のみ)。値段は出すが「約定していない」ことを一目で分かるように */
+  .halt { color:var(--amber); font-weight:700; }
+  /* 戦績 (closed trades) */
+  .pnl-pos { color:var(--green); font-weight:700; }
+  .pnl-neg { color:var(--red); font-weight:700; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; align-items:start; }
+  .cols h3 { font-size:12px; color:var(--muted); font-weight:600; margin:0 0 6px; }
+  .scroll { max-height:340px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; }
+  .scroll table { border:none; border-radius:0; }
+  .scroll thead th { position:sticky; top:0; background:var(--panel); z-index:1; }
+  /* LLM 判断ジャーナル(観測専用パネル) */
+  #advisor { display:flex; flex-direction:column; gap:8px; }
+  #advisor summary { cursor:pointer; }
+  #advisor pre { white-space:pre-wrap; font-size:11px; background:#10141b; border:1px solid #262a33;
+                 border-radius:4px; padding:8px 10px; margin:6px 0 0; overflow-x:auto; }
+
+/* --- track タブ(PAPER / LIVE) --- */
+.tabs { display:inline-flex; gap:6px; }
+.tab { cursor:pointer; border:1px solid #444; background:#222; color:#bbb;
+       padding:4px 12px; border-radius:6px; font-size:13px; }
+.tab.on { background:#eee; color:#111; font-weight:bold; }
+#tabLive.on { background:#c00; color:#fff; border-color:#c00; }
+/* LIVE 中は画面全体を赤で縁取る。**紙と同じ形の表を見ているのに実弾**という
+   一番危ない誤読を、色で常時打ち消す。 */
+body[data-track="live"] main { border:3px solid #c00; border-radius:8px; padding:10px; }
+body[data-track="live"] header { border-bottom:3px solid #c00; }
+#trackBanner { display:none; }
+body[data-track="live"] #trackBanner {
+  display:block; background:#c00; color:#fff; font-weight:bold;
+  padding:8px 12px; border-radius:6px; margin-bottom:10px; }
+.na { color:#888; font-style:italic; }
+/* 🛑 どの台帳の数字かを**パネルごと**に書く。タブだけだと、スクロールした先で
+   「いま見ているのがどっちか」が分からなくなる(実弾と紙で同じ形の表が出る)。 */
+.trackTag { display:inline-block; font-size:11px; font-weight:bold; padding:2px 8px;
+            border-radius:4px; margin-right:8px; vertical-align:middle;
+            background:#444; color:#ddd; }
+body[data-track="live"] .trackTag { background:#c00; color:#fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>stock-bot</h1>
+  <span id="mode" class="pill muted">…</span>
+  <span id="broker" class="pill muted">…</span>
+  <span id="selPill" class="pill muted">…</span>
+  <span class="grow"></span>
+  <!-- 🛑 PAPER / LIVE は**同じ画面を切り替える**。同じ形の表に別の台帳を出すので、
+       いまどちらを見ているかが一目で分かる必要がある(混読が実弾の判断を誤らせる)。
+       LIVE 選択中は body に data-track="live" が付き、全体が赤枠になる。 -->
+  <span class="tabs">
+    <button id="tabPaper" class="tab on" onclick="setTrack('paper')">📄 PAPER(紙)</button>
+    <button id="tabLive" class="tab" onclick="setTrack('live')">🔴 LIVE(実弾)</button>
+  </span>
+  <span class="grow"></span>
+  <span id="conn"><span class="dot bad"></span><span id="connText">connecting…</span></span>
+  <button id="btnStop" class="stop">緊急停止</button>
+  <button id="btnResume" class="resume">再開</button>
+</header>
+<main>
+  <div id="trackBanner">🔴 いま表示しているのは LIVE(実弾)です — この画面の数字はすべて実際のお金です</div>
+  <div id="banner" class="banner"></div>
+
+  <div class="grid" id="counters"></div>
+
+  <div id="apiUsage" class="banner"></div>
+  <div id="csvWarn" class="banner"></div>
+  <div id="bkWarn" class="banner"></div>
+
+  <h2><span class="trackTag"></span>現在の狙い — 全銘柄スキャン → 最良の(銘柄×戦略)を arm → 条件成立で建玉</h2>
+  <div id="focus"><div class="focus"><div class="empty">スキャン待ち…</div></div></div>
+
+  <h2><span class="trackTag"></span>🤖 LLM 判断ジャーナル — <b>arm 経路には居ない</b>(履歴の閲覧のみ)
+    <button id="advisor-btn" onclick="runAdvisor()"
+      style="float:right;font-size:12px;padding:2px 10px;cursor:pointer">▶ 今すぐ arm ラウンド</button></h2>
+  <div id="advisor"><div class="empty">読み込み中…</div></div>
+
+  <h2><span class="trackTag"></span>本日のスキャン — 戦略ごと(発火数の多い順)・★ = arm 済みで発注待ち(arm は決定論・LLM は経路に居ない)</h2>
+  <div id="gonogoNote" class="tag" style="margin:4px 0"></div>
+  <div id="ranking"><div class="empty">loading…</div></div>
+
+  <div id="symbolBlocksWrap" style="display:none">
+  <h2><span class="trackTag"></span>⏸ 銘柄ごとの新規停止(live のみ・人間のボタン)— 止めるのは新規だけ。決済・守りは動く。解除するまで再起動をまたいで続く</h2>
+  <div id="symbolBlocks"><div class="empty">loading…</div></div>
+  </div>
+
+  <h2><span class="trackTag"></span><span id="openHdr">建玉 (open positions) — 含み損益は未実現・下の net 合計には含めない</span>
+    <button id="btnFlattenAll" onclick="flattenAll()"
+      style="float:right;font-size:12px;padding:2px 10px;cursor:pointer">⚠ 全建玉を成行決済</button></h2>
+  <div class="grid" id="openTotals"></div>
+  <div id="halted"></div>
+  <table>
+    <thead><tr><th>銘柄</th><th>side</th><th>株数</th><th>建値</th><th>現在値</th><th>含み損益(円)</th><th>株価差(円/株)</th><th>利確 (TP / トレール)</th><th>損切 (SL)</th><th>出口まで</th><th>戦略</th><th>mode</th><th>source</th><th>config</th><th>操作</th></tr></thead>
+    <tbody id="positions"><tr><td class="empty" colspan="15">loading…</td></tr></tbody>
+  </table>
+
+  <!-- 🚨 **操作の結果はここに残る。**建玉表は 2 秒ごとに innerHTML ごと差し替わるので、
+       ボタンのラベルに書いた結果は 1 秒で消える(HTTP 500 の本文が
+       誰の目にも触れないまま「押しても反応しない」に見える)。ここは refresh() が
+       一度も触らない領域で、ダイアログが抑止されていても結果が残る。 -->
+  <div id="actionLog" class="tag" style="margin:6px 0 16px;white-space:pre-wrap"></div>
+  <!-- 🛑 期限延長と TP/SL 変更のボタンは置かない。事前に決めた出口を
+       裁量で曲げる操作なので、API だけ残して画面からは押せなくする(web_test.go)。 -->
+
+  <h2><span class="trackTag"></span>📊 戦績 (決済済みトレード) — net = gross − 手数料 + carry
+    <span id="perfPeriod" class="pill accent">–</span>
+    <!-- 集計期間は期間の境界で切る。出口の規則が変わった期間を合算した数字は台帳にならない。
+         **選択肢(期間ごと・全期間)と既定はサーバが持つ**(/api/performance/cycles・cmd/stockbot/perf_cycles.go)。
+         paper は期間ごとに DB が違うので、画面が日付を持っても正しい台帳を引けない。 -->
+    <select id="perfSince" onchange="onPerfSinceChange()" style="float:right"></select></h2>
+  <div class="grid" id="perfCards"></div>
+  <div class="cols">
+    <div>
+      <h3>1日ごとの戦績 (JST・新しい日が先)</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>日付</th><th>本数</th><th>勝率</th><th>net</th></tr></thead>
+        <tbody id="perfDays"><tr><td class="empty" colspan="4">loading…</td></tr></tbody>
+      </table></div>
+    </div>
+    <div>
+      <h3>戦略ごとの戦績 (net 降順)</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>戦略</th><th>本数</th><th>勝率</th><th>net</th></tr></thead>
+        <tbody id="perfStrategies"><tr><td class="empty" colspan="4">loading…</td></tr></tbody>
+      </table></div>
+    </div>
+    <div>
+      <h3>銘柄ごとの戦績 (net 降順)</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>銘柄</th><th>本数</th><th>勝率</th><th>net</th></tr></thead>
+        <tbody id="perfSymbols"><tr><td class="empty" colspan="4">loading…</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <h2><span class="trackTag"></span>決済履歴 (新しい順・最新50件)</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>決済時刻</th><th>銘柄</th><th>戦略</th><th>side</th><th>株数</th><th>建値</th><th>決済値</th><th>net</th><th>理由</th></tr></thead>
+    <tbody id="perfTrades"><tr><td class="empty" colspan="9">loading…</td></tr></tbody>
+  </table></div>
+</main>
+<footer>auto-refresh 2s · <span id="ts"></span> · 発注は決定論ロジック(Claudeは発注経路に入らない)</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>]/g, c => '&#' + c.charCodeAt(0) + ';').split(String.fromCharCode(34)).join('&#34;').split(String.fromCharCode(39)).join('&#39;');
+const fmt = (n, d=0) => (n===null||n===undefined||n==="") ? "–" : Number(n).toLocaleString(undefined,{maximumFractionDigits:d});
+
+// ── track(PAPER / LIVE)の切替 ───────────────────────────────────
+// 🛑 プレフィクスは 1 か所だけ。fetch ごとに手で分岐させると、いつか 1 本だけ
+// paper のまま残って「LIVE 画面に紙の数字」が出る。
+let TRACK = localStorage.getItem('stockbot.track') || 'paper';
+// トラックは paper と live の 2 つだけ。ブラウザに未知の track が
+// 保存されていたら paper に戻す — 残すと存在しない台帳の空画面に落ちる。
+if (TRACK !== 'paper' && TRACK !== 'live') TRACK = 'paper';
+// 2 トラック: paper = research 台帳、live = 実弾。
+// 🛑 同じ形の表に別の台帳を出すので、**どれを見ているか**が常に分かる必要がある
+// (混読は台帳の物理分離の利点を画面側で捨てることになる)。
+function api(path) { return TRACK === 'paper' ? '/api' + path : '/api/' + TRACK + path; }
+function isLive() { return TRACK === 'live'; }
+
+function setTrack(t) {
+  TRACK = t;
+  localStorage.setItem('stockbot.track', t);
+  document.body.dataset.track = t;
+  document.getElementById('tabPaper').classList.toggle('on', t === 'paper');
+  document.getElementById('tabLive').classList.toggle('on', t === 'live');
+  // 切替直後に前 track の数字が残らないよう即クリアしてから引き直す。
+  lastPositionsHTML = null; // トラックが変われば必ず描き直す
+  for (const id of ['positions','perfDays','perfStrategies','perfSymbols','perfTrades']) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<tr><td class="empty" colspan="15">loading…</td></tr>';
+  }
+  document.getElementById('counters').innerHTML = '';
+  // 🛑 arm しないトラック(live)では「▶ 今すぐ arm ラウンド」を出さない。
+  // 押せる場所に置いておくと、押した人は「このトラックで arm が回った」と読む。
+  const ab = document.getElementById('advisor-btn');
+  if (ab) ab.style.display = (t === 'paper') ? '' : 'none';
+  const oh = document.getElementById('openHdr');
+  if (oh) oh.innerHTML = '建玉 (open positions) — 含み損益は未実現・下の net 合計には含めない';
+  // 戦績のサマリカードと期間も消す。ここを残すと、取得が終わるまで**前 track の
+  // net が実弾のラベルの下に出る**。
+  document.getElementById('perfCards').innerHTML = '';
+  document.getElementById('perfPeriod').textContent = '–';
+  for (const el of document.querySelectorAll('.trackTag')) {
+    el.textContent = (t === 'live') ? '🔴 LIVE 台帳' : '📄 PAPER 台帳';
+  }
+  document.getElementById('ranking').innerHTML = '<div class="empty">loading…</div>';
+  // 🛑 LLM 判断パネルは refresh() の中で引き直している。ここから別関数を呼ばない
+  // (存在しない関数を呼ぶと初期化ごと落ちる)。
+  refresh(); refreshPerformance();
+}
+
+async function refresh() {
+  try {
+    const r = await fetch(api('/dashboard'), {cache:'no-store'});
+    // 🛑 PAPER 以外のタブで 503 = そのトラックが起動していない。**黙って paper を
+    // 出さない** — 起動コマンドの env を付け忘れたときに気づける唯一の場所。
+    if (TRACK !== 'paper' && r.status === 503) {
+      const envName = 'STOCKBOT_LIVE_BOT_CONFIG';
+      document.getElementById('banner').innerHTML =
+        '<b style="color:#c00">' + TRACK.toUpperCase() + ' track が起動していません。</b> ' +
+        '起動時に ' + envName + ' などの env を付け忘れていませんか' +
+        '(env 未設定だとそのトラックは黙って無効になります)。';
+      // 🛑 ここに setTrack の断片(trackTag の張り替え)が紛れ込んでいた。`t` は
+      // この関数のスコープに無いので **ReferenceError で throw** し、下の
+      // 「track なし」表示に到達せず catch に落ちて "disconnected" になる。
+      // クリア処理は setTrack が既に済ませている。
+      document.getElementById('counters').innerHTML = '';
+      // 🚨 **キャッシュを戻す。**ここは #positions を直接書き換える 3 つ目の経路で、
+      // lastPositionsHTML を戻さないと、track が復帰したときに render() が同じ HTML を
+      // 作った時点で DOM が書き換わらず、**実弾の建玉があるのに「track なし」のまま
+      // 固まる**。make stop/start は任意タイミングで打たれる前提(設計制約)なので
+      // 日常的に起きる。
+      lastPositionsHTML = null;
+      document.getElementById('positions').innerHTML =
+        '<tr><td class="empty" colspan="15">' + TRACK + ' track なし</td></tr>';
+      return;
+    }
+    if (!r.ok) throw new Error('http '+r.status);
+    render(await r.json());
+    $('conn').innerHTML = '<span class="dot ok"></span><span>connected</span>';
+  } catch (e) {
+    $('conn').innerHTML = '<span class="dot bad"></span><span>disconnected</span>';
+  }
+  // LLM 判断ジャーナルは別エンドポイント(遅い/失敗しても本体表示を壊さない)。
+  // 表示は最新1件のみ(全履歴は advisor_runs テーブル / /api/advisor-runs?limit=N)。
+  try {
+    // 🛑 live に advisor は存在しない(LLM を発注経路に入れない — CLAUDE.md)。
+    // 空パネルを出すと「今日は判断が無かった」と読まれるので、理由を明示する。
+    if (isLive()) {
+      document.getElementById('advisor').innerHTML =
+        '<div class="na">LIVE では advisor(LLM)は構成として無効です — ' +
+        'LLM をリアルタイム発注経路に入れない(CLAUDE.md)。' +
+        '銘柄選定は日足の決定論スキャン(selector)が行います。</div>';
+      return;
+    }
+    const r = await fetch(api('/advisor-runs') + '?limit=1', {cache:'no-store'});
+    if (r.ok) renderAdvisor(await r.json());
+  } catch (e) { /* 判断パネルだけ前回表示のまま */ }
+}
+
+// 選んだ期間は**トラックごとに**次の表示まで覚える。ただし**保存値が一覧に無いとき**
+// (= 期間が進んで一覧が変わったとき)はサーバの既定へ戻す — 締めた期間の数字を
+// 黙って出し続けない。一覧はトラックが変わったときだけ取り直す。
+let perfCyclesTrack = null;
+async function loadPerfCycles() {
+  if (perfCyclesTrack === TRACK) return true;
+  const sel = $('perfSince');
+  const r = await fetch(api('/performance/cycles'), {cache:'no-store'});
+  if (!r.ok) throw new Error('http ' + r.status);
+  const j = await r.json();
+  sel.innerHTML = (j.cycles || []).map(c =>
+    `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join('');
+  let saved = null;
+  try { saved = localStorage.getItem('perfCycle.' + TRACK); } catch (e) { /* 保存なしで既定 */ }
+  sel.value = (saved && [...sel.options].some(o => o.value === saved)) ? saved : (j.default || '');
+  perfCyclesTrack = TRACK;
+  return true;
+}
+function onPerfSinceChange() {
+  try { localStorage.setItem('perfCycle.' + TRACK, $('perfSince').value); } catch (e) { /* 覚えないだけ */ }
+  refreshPerformance();
+}
+
+// 戦績は本体より重い(台帳の全走査)ので 10 秒に 1 回だけ。失敗しても前回表示のまま。
+async function refreshPerformance() {
+  try {
+    await loadPerfCycles();
+  } catch (e) {
+    // 🛑 一覧が取れないときに cycle 無し(= 全期間)で黙って読まない。
+    perfCyclesTrack = null;
+    $('perfCards').innerHTML =
+      '<div class="card"><div class="label">戦績</div><div class="val">サイクル一覧を取得できません</div></div>';
+    $('perfPeriod').textContent = '–';
+    return;
+  }
+  const cycle = $('perfSince').value;
+  try {
+    const r = await fetch(api('/performance') + (cycle ? '?cycle=' + encodeURIComponent(cycle) : ''), {cache:'no-store'});
+    if (r.status === 503) { renderPerformance(null); return; }
+    if (!r.ok) throw new Error('http '+r.status);
+    renderPerformance(await r.json());
+  } catch (e) {
+    // 🛑 **前 track の数字を残さない**。失敗を黙って前回表示のままにすると、LIVE
+    // タブに paper の net が出たまま固まる(どちらの台帳か分からない画面が
+    // 一番危ない)。読めなかったことを明示する。
+    $('perfCards').innerHTML =
+      '<div class="card"><div class="label">戦績</div><div class="val">取得失敗</div></div>';
+    $('perfPeriod').textContent = '–';
+    for (const id of ['perfDays','perfStrategies','perfSymbols']) {
+      $(id).innerHTML = '<tr><td class="empty" colspan="4">取得に失敗しました: ' + e + '</td></tr>';
+    }
+    $('perfTrades').innerHTML = '<tr><td class="empty" colspan="9">取得に失敗しました</td></tr>';
+  }
+}
+
+// 決済理由 → 日本語ラベル。バックエンドの close_reason と 1:1。
+// 未知の理由は raw のまま出す(情報を隠さない)。
+const CLOSE_REASON = {
+  take_profit: '利確 (TP)', stop_loss: '損切 (SL)', max_hold: '時間切れ',
+  early_exit: '早期撤退', ratchet_takeprofit: 'トレール利確', manual: '手動',
+  // 🛑 トレール決済で **gross が負**だったもの。ラベルを分けたのは、
+  // 「利確が発火した」と読める行が実は損失だったから。
+  // **戦略の出口なのでエッジ標本には入る** — 別枠ではなく別ラベル。
+  ratchet_giveback_loss: 'トレール返り討ち (損失)',
+  reconcile_cold_close: '照合で消失', broker_close: 'broker 側決済', forced_flat: '引け前フラット化',
+  // 🛑 **戦略の出口ではない**が、口座には実額で効いているので戦績に計上している。
+  // 別枠に逃がすと全件がそれだった日に戦績が空に見える。何が起きた
+  // 行なのかはここのラベルで分かるようにしておく。
+  entry_compensated: '巻き戻し (守り不成立)', external_close: '人間の決済 (external)',
+  split_misfire: '分割の誤読で決済',
+};
+
+const pnl = v => `<span class="${v > 0 ? 'pnl-pos' : (v < 0 ? 'pnl-neg' : '')}">${v > 0 ? '+' : ''}${fmt(v)}</span>`;
+
+// ⏰ 時間切れ(max_hold)の期限。**期限そのものは server(domain の MaxHoldUntil)の値**を
+// 読み、ここでは表示と残り時間だけを作る(opened_at + 分 を JS で足すと engine からずれる)。
+// 期限が土日・場外(JST 9:00〜15:30 の外)に来る建玉は、**次の立会の最初の値で成行決済**
+// される(例: 期限 日曜 09:00 → 月曜 寄り)。祝日は画面では見ない(概算)。
+function jstStamp(ms) {
+  const j = new Date(ms + 9 * 3600000);
+  const pad = n => String(n).padStart(2, '0');
+  return { wd: j.getUTCDay(), hm: j.getUTCHours() * 60 + j.getUTCMinutes(),
+    text: `${j.getUTCMonth() + 1}/${j.getUTCDate()}(${'日月火水木金土'[j.getUTCDay()]}) ${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}` };
+}
+function maxHoldTag(p) {
+  if (!p.max_hold_until) return '';
+  const until = new Date(p.max_hold_until).getTime();
+  if (isNaN(until)) return '';
+  const at = jstStamp(until), left = until - Date.now();
+  const rest = left <= 0
+    ? '<b>期限切れ — 次の値で成行決済</b>'
+    : `あと ${Math.floor(left / 86400000) > 0 ? Math.floor(left / 86400000) + '日' : ''}${Math.floor(left % 86400000 / 3600000)}時間`;
+  const offHours = at.wd === 0 || at.wd === 6 || at.hm < 9 * 60 || at.hm >= 15 * 60 + 30;
+  const offTag = offHours ? '<br>· 場外/休日 → 次の立会の寄りで成行' : '';
+  const hardTag = p.max_hold_hard_until
+    ? `<br>· 建値近辺なら ${jstStamp(new Date(p.max_hold_hard_until).getTime()).text} まで延長` : '';
+  return `<br><span class="tag">⏰ 時間切れ ${at.text}<br>· ${rest}${offTag}${hardTag}</span>`;
+}
+const winRate = (w, n) => n ? fmt(100 * w / n, 0) + '%' : '–';
+
+function renderPerformance(p) {
+  const empty = msg => `<tr><td class="empty" colspan="4">${msg}</td></tr>`;
+  // 適用中の期間は**サーバの応答**で出す(UI 側のつもりではなく、実際に何で絞った
+  // 結果か)。since が返らなければ全期間 — 部分集合を全期間と読ませない。
+  // 🛑 **どちらの数え方か**を必ず添える。画面は口座ベース(戦略の出口ではない決済も
+  // 計上)、cmd/forward-report → cmd/edge-judge はエッジ標本(除外)で、同じ台帳から
+  // 別の N が出る。名乗りが無い画面は「どちらの数字か分からない画面」になる。
+  const counting = p && p.counting === 'account'
+    ? ' · 口座ベース(巻き戻し・人間の決済も計上)' : (p && p.counting ? ' · エッジ標本' : '');
+  const period = p && (p.since || p.until)
+    ? (p.since || '') + ' 〜 ' + (p.until ? p.until + ' より前' : '') : '全期間';
+  $('perfPeriod').textContent = p ? period + counting : '–';
+  if (!p) { // 503 = trade repo 無しの構成。空を「損益ゼロ」と読ませない。
+    $('perfCards').innerHTML = '<div class="card"><div class="label">戦績</div><div class="val">–</div></div>';
+    for (const id of ['perfDays','perfStrategies','perfSymbols']) $(id).innerHTML = empty('この構成では戦績を集計できません');
+    $('perfTrades').innerHTML = '<tr><td class="empty" colspan="9">この構成では戦績を集計できません</td></tr>';
+    return;
+  }
+  const cards = [
+    ['net 合計', p.n ? (p.net_total_jpy > 0 ? '+' : '') + fmt(p.net_total_jpy) + '円' : '–'],
+    ['トレード数', fmt(p.n)],
+    ['勝率', winRate(p.wins, p.n)],
+    ['平均 net / 本', p.n ? fmt(p.net_total_jpy / p.n) + '円' : '–'],
+    ['gross 合計', p.n ? fmt(p.gross_total_jpy) + '円' : '–'],
+    ['手数料 合計', p.n ? '-' + fmt(p.fee_total_jpy) + '円' : '–'],
+    ['取引した銘柄数', fmt(p.symbol_n)],
+  ];
+  $('perfCards').innerHTML = cards.map(([l, v], i) => {
+    const cls = (i === 0 && p.n) ? (p.net_total_jpy > 0 ? 'pnl-pos' : (p.net_total_jpy < 0 ? 'pnl-neg' : '')) : '';
+    return `<div class="card"><div class="label">${l}</div><div class="val ${cls}">${v}</div></div>`;
+  }).join('');
+
+  const rows = (list, key) => (list && list.length) ? list.map(x =>
+    `<tr><td><b>${esc(x[key])}</b></td><td>${fmt(x.n)}</td><td>${winRate(x.wins, x.n)}</td><td>${pnl(x.net_jpy)}</td></tr>`).join('') : null;
+
+  $('perfDays').innerHTML = rows(p.by_day, 'day') || empty('決済済みトレードはまだありません');
+  $('perfStrategies').innerHTML = rows(p.by_strategy, 'strategy')
+    || empty(p.n ? '戦略の内訳は Postgres 構成でのみ出ます' : '決済済みトレードはまだありません');
+  $('perfSymbols').innerHTML = rows(p.by_symbol, 'symbol') || empty('決済済みトレードはまだありません');
+
+  // API は closed_at 昇順(edge-judge 入力の順)。UI は新しい順で読む。
+  const trades = (p.trades || []).slice(-50).reverse();
+  $('perfTrades').innerHTML = trades.length ? trades.map(t =>
+    `<tr><td>${esc(t.closed_at)}</td><td><b>${esc(t.symbol)}</b></td><td class="tag">${esc(t.strategy || '–')}</td>
+      <td class="side-${esc(t.side)}">${esc(t.side)}</td><td>${fmt(t.quantity)}</td>
+      <td>${fmt(t.entry_price, 1)}</td><td>${fmt(t.close_price, 1)}</td><td>${pnl(t.net_jpy)}</td>
+      <td class="tag">${esc(CLOSE_REASON[t.close_reason] || t.close_reason)}</td></tr>`).join('')
+    : '<tr><td class="empty" colspan="9">決済済みトレードはまだありません(建玉が TP/SL/時間切れで閉じると出ます)</td></tr>';
+}
+
+// status → 日本語ラベル。バックエンドの port.AdvisorRunStatus と1:1。
+// 未知の status は raw のまま出す(情報を隠さない — 以前の別プロジェクトの llm_stage_label と同方針)。
+const ADVISOR_STATUS = {
+  success:      {label:'✅ 判断成立(config 生成)', cls:'fire'},
+  cli_error:    {label:'⚠️ LLM 実行エラー → 見送り', cls:'wait'},
+  parse_error:  {label:'⚠️ 出力を解釈できず → 見送り', cls:'wait'},
+  timeout:      {label:'⏳ 判断が時間切れ → 見送り', cls:'wait'},
+  empty_output: {label:'— 出力なし → 見送り', cls:'wait'},
+};
+
+function renderAdvisor(runs) {
+  const el = $('advisor');
+  if (!runs || !runs.length) {
+    el.innerHTML = '<div class="empty">LLM の判断記録はありません。' +
+      '<b>arm は決定論</b>なので、この経路は走らず新しい行も増えません' +
+      '(復活させるなら bot_config の <code>advisor_v2.arm_source: llm</code>)。</div>';
+    return;
+  }
+  el.innerHTML = runs.map(r => {
+    const st = ADVISOR_STATUS[r.status] || {label: esc(r.status), cls:'wait'};
+    const when = r.finished_at || r.started_at;
+    const t = when ? new Date(when).toLocaleString() : '–';
+    // 🛑 決定論 arm では新しい行が増えないので、放っておくと**過去の LLM 判断**が
+    // 「今の判断」の顔をして残り続ける。日付が今日でなければその場で明示する。
+    const stale = when && new Date(when).toDateString() !== new Date().toDateString()
+      ? '<div class="why">⚠ <b>これは過去の記録</b>(現在の arm は決定論で、この経路は走っていません)。</div>' : '';
+    const secs = r.duration_ms ? (r.duration_ms/1000).toFixed(1)+'s' : '–';
+    const conf = r.regime_confidence ? ' (確信度 ' + fmt(r.regime_confidence*100,0) + '%)' : '';
+    const regime = r.regime_type ? `<div class="why">相場認識: <b>${esc(r.regime_type)}</b>${conf}</div>` : '';
+    const reason = r.regime_reason ? `<div class="why">理由: ${esc(r.regime_reason)}</div>` : '';
+    const err = r.error_msg ? `<div class="why">エラー: ${esc(r.error_msg)}${r.usage_limited?' <span class="tag">利用上限</span>':''}</div>` : '';
+    const yaml = r.parsed_yaml ? `<details><summary class="tag">生成された config を見る</summary><pre>${esc(r.parsed_yaml)}</pre></details>` : '';
+    return `<div class="focus">
+      <div class="top"><span class="badge ${st.cls}">${st.label}</span>
+        <span class="sym">${esc(r.symbol||'—')}</span>
+        <span class="tag">${t} · ${secs}</span></div>
+      ${stale}${regime}${reason}${err}${yaml}
+    </div>`;
+  }).join('');
+}
+
+// 直近の描画で数えた OPEN 建玉数。一括決済の確認ダイアログが「何本消えるのか」を
+// 出すために使う(件数を見せずに全清算を押させない)。
+let lastOpenN = 0;
+// 🚨 建玉表は 2 秒ごとに innerHTML を丸ごと差し替える。そのままだと
+//   ① 操作中にボタンごと作り直され、押した結果(「失敗 (500)」等)が 1 秒で消える
+//   ② mousedown と mouseup の間に差し替えが挟まると click が発火せず、押下が無かった
+//      ことになる
+// の 2 つが起きる。① では HTTP 500 の中身(「broker rejected the settle order」)が
+// 誰の目にも触れないまま「ボタンが反応しない」に見える。
+let ACTION_BUSY = 0;      // >0 = 人間の操作が進行中。建玉表の書込だけ止める
+// 🛑 破壊的 POST には **AbortSignal を付けない**。abort はサーバ側の r.Context() を
+// cancel するので、守りの置き直し(取消 → 再発注)の**間**で落ちると
+// PlaceSettleOCO が ctx.Err() で失敗し、**守りが板から消えたまま emergency trip**
+// になる。画面を固まらせないための期限が実弾の守りを落とす。
+// 期限は **watchdog**(ログに出すだけ・fetch は中断しない)で表現する。
+const ACTION_WATCHDOG_MS = 45000;
+let lastPositionsHTML = null; // 中身が同じなら DOM を書き換えない(click を殺さない)
+
+function render(d) {
+  const s = d.status || {};
+  const sel = d.selector || {};
+  const rank = sel.ranking || [];
+  // 停止中の銘柄はランキングの行より先に読む(行のボタンが BLOCKS を見る)。
+  renderSymbolBlocks(d);
+  // 寄り前の go/no-go(行の判定セルが GONOGO を見る)。
+  GONOGO = (d.gonogo || {}).symbols || {};
+  renderGoNoGoNote(d.gonogo || {});
+  const mode = s.mode || '?';
+  $('mode').textContent = mode;
+  $('mode').className = 'pill ' + (mode.startsWith('live') ? 'live' : 'paper');
+  $('broker').textContent = s.broker_kind || '?';
+
+  // selector pill
+  if (sel.enabled) {
+    $('selPill').className = 'pill accent';
+    $('selPill').textContent = sel.armed_symbol ? ('selector ▶ arm ' + sel.armed_symbol) : 'selector ON (待機)';
+  } else { $('selPill').className = 'pill muted'; $('selPill').textContent = 'selector OFF'; }
+
+  const b = $('banner');
+  if (s.emergency_stop) { b.className = 'banner on'; b.textContent = '⛔ EMERGENCY STOP — ' + (s.emergency_reason||'').trim(); }
+  else { b.className = 'banner'; b.textContent = ''; }
+
+  // 日足 CSV の古さ。bot の売買は DB 側の毎時リフレッシュを見るのでここが赤でも
+  // 取引は止まらない — 古くなるのは検定ツール(edge-eval 等)の入力。
+  // 朝の launchd ジョブが TCC で no-op になっても、画面に何も出ないと
+  // 何日も気づけない。その防止。
+  const dcsv = d.daily_csv || {};
+  const cw = $('csvWarn');
+  if (dcsv.behind_n > 0) {
+    const names = (dcsv.behind || []).map(esc).join(' ');
+    const more = dcsv.behind_n > (dcsv.behind || []).length ? ' ほか' : '';
+    cw.className = 'banner on';
+    cw.innerHTML = `⚠️ 日足 CSV が最新ではありません — 監視 ${fmt(dcsv.watched_n)} 系列のうち
+      ${fmt(dcsv.behind_n)} 件が ${esc(dcsv.through)} に未達
+      (CSV 最古 ${esc(dcsv.oldest||'–')} / 最新 ${esc(dcsv.newest||'–')})
+      <div class="tag" style="font-weight:400;margin-top:4px">${names}${more}
+        — 売買は DB 側の日足で継続中(影響を受けるのは検定ツールの入力)。
+        <code>make fetch-daily</code> か朝ジョブのログ <code>~/.stockbot/logs/morning.log</code> を確認</div>`;
+  } else { cw.className = 'banner'; cw.innerHTML = ''; }
+
+  // DB dump の古さ。日足 CSV と違い、こちらは**失うと戻せない**(forward 記録の
+  // 唯一のコピー)。定期 dump が落ちた朝に pgdata が消えると戻せない。
+  // db-backup.sh は container 不在を skip して exit 0 するので launchd からは
+  // 成功に見える — だから exit code ではなく成果物の古さを画面に出す。
+  const bk = d.db_backup || {};
+  const bw = $('bkWarn');
+  if (bk.stale) {
+    // 🚨 **「dump が一度も無い DB」と「dump が古い DB」は別の状態**。前者は
+    // その台帳が**無保護**という意味なので、DB 名を必ず出す(「バックアップが古い」だけだと、
+    // 無保護な DB があることが画面から読めない)。
+    const missing = (bk.missing_dbs || []).join(' / ');
+    const staleDBs = (bk.stale_dbs || []).join(' / ');
+    const age = bk.dumps > 0
+      ? `最新 ${esc(bk.newest||'–')}(${fmt(Math.round(bk.age_hours))} 時間前)`
+      : '有効な dump が 1 つもありません';
+    const head = missing
+      ? `🚨 dump が 1 つも無い DB: ${esc(missing)} — その台帳は**無保護**です`
+      : `⚠️ DB バックアップが古い — ${age}`;
+    bw.className = 'banner on';
+    bw.innerHTML = `${head}
+      <div class="tag" style="font-weight:400;margin-top:4px">
+        ${staleDBs ? `古い DB: ${esc(staleDBs)}<br>` : ''}
+        trades / positions / advisor_runs は dump が唯一のコピーです(CSV と違い再生成できない)。
+        <code>make backup-install</code> で 3 DB 対応版を配備し、<code>make backup-now</code> と
+        <code>~/.stockbot/logs/db-backup.log</code>、docker が起動しているかを確認</div>`;
+  } else { bw.className = 'banner'; bw.innerHTML = ''; }
+
+  // 立花 API の当日消費。**この起動からの累計ではなく開局窓(5:30〜翌3:30)の口座合計**
+  // を出す — 立花側の集計単位に揃っていないと「1万以内です」と言えない。
+  // u が無い = 旧バイナリなので、その場合だけプロセス内累計に落とす。
+  function apiUsageLabel(u, fallback) {
+    if (!u || typeof u.total !== 'number') return fmt(fallback) + '(この起動)';
+    return fmt(u.total) + ' / ' + fmt(u.cap);
+  }
+
+  // 「スキャン対象 200」だけだと、その 200 を全部建てうると読める。実際には 1単元の
+  // 建玉金額上限(selector.max_position_notional_jpy)が別に立っていて、上限を超える
+  // 銘柄は**発火しても arm されない = 買われない**。ユニバースの半分しか上限内に無く、
+  // 発火した候補が全部上限超で対象外という日もある。
+  // affordable は直近の selector Tick 時点の内数(-1 / 未設定 = 未計測)。
+  function scanTargetCell(sel) {
+    if (sel.universe === null || sel.universe === undefined) return '–';
+    const cap = sel.max_notional_jpy, n = sel.affordable;
+    if (!(cap > 0) || typeof n !== 'number' || n < 0) return String(sel.universe);
+    return `${sel.universe}<div class="tag" style="font-weight:400;margin-top:2px">`
+      + `うち建玉可 <b>${n}</b>(1単元 ≤ ${fmt(cap)}円)</div>`;
+  }
+
+  // 🚨 **なぜ 1 本も arm されていないのか**を名指しする。
+  // 余力が候補 1 本の金額を下回る口座でその候補を arm し、場中ずっと gross_notional_cap で
+  // 落ち続けて立花への通信を数千回焼いた。いまは selector が先に資金枠を見て
+  // arm しないので、**画面が黙ると「なぜ止まっているのか」が分からなくなる**。
+  //   fundless … 建玉が上限に達している = 枠待ち(決済されるまで新規は建たない)
+  //   unknown  … 口座照会が読めていない = fail-close で arm しない(障害)
+  //   ok       … 余力あり(それでも 1単元が入らなければ個別に落ちる)
+  function leverageCell(sel) {
+    const st = sel.leverage_state, room = sel.leverage_headroom_jpy;
+    if (!st) return null; // レバ上限を持たない構成(research)— 行ごと出さない
+    if (st === 'unknown') return `<span class="tag halt">⚠ 口座照会が読めない — arm しない</span>`;
+    const label = st === 'fundless'
+      ? `<span class="tag halt">🛑 枠待ち(資金枠なし)</span>`
+      : `<span class="tag">余力あり</span>`;
+    return `${fmt(room)}円<div style="font-weight:400;margin-top:2px">${label}</div>`;
+  }
+
+  function renderAPIUsage(u, fallback) {
+    const el = $('apiUsage');
+    if (!el) return;
+    if (!u || typeof u.total !== 'number') { el.className = 'banner'; el.innerHTML = ''; return; }
+    const pct = u.cap > 0 ? Math.round(u.total * 100 / u.cap) : 0;
+    // 内訳は CLMID 単位で出す。立花からの指摘も内訳もこの単位で来るので、
+    // 同じ粒度で持っていないと「どの処理が原因か」に答えられない。
+    const rows = Object.entries(u.by_clmid || {}).sort((a,b) => b[1]-a[1])
+      .map(([k,v]) => `<span class="tag" style="margin-right:8px">${esc(k)}: <b>${fmt(v)}</b></span>`).join('');
+    const chunkNote = (u.quote_chunks||1) > 1
+      ? `<div class="tag" style="margin-top:4px">⚠️ 監視銘柄が一括取得の上限(120)を <b>${u.quote_chunks}</b> 倍超え —
+         通信量は一定に保たれているが<b>時価の実効間隔が ${u.quote_chunks} 倍</b>に延びている(1分足の解像度が落ちる)</div>`
+      : '';
+    el.className = pct >= 80 ? 'banner on' : 'banner';
+    el.innerHTML = `${pct >= 80 ? '⚠️ ' : ''}立花 API 当日消費 <b>${fmt(u.total)}</b> / ${fmt(u.cap)} 回(${pct}%)
+      <div class="tag" style="font-weight:400;margin-top:4px">
+        集計窓 ${esc((u.window_start||'').replace('T',' ').slice(0,16))} 起点(開局 5:30〜翌3:30)/
+        全プロセス合算(bot + 朝の fetch-daily)/ 再起動でリセットされない。
+        立花側基準(login 除く)では <b>${fmt(u.total_excluding_login)}</b> 回</div>
+      <div style="margin-top:6px">${rows}</div>${chunkNote}`;
+  }
+
+  // counters / health
+  const c = d.counters || {};
+  const triggers = rank.reduce((n,g) => n + (g.triggered||0), 0);
+  const armedN   = rank.reduce((n,g) => n + (g.armed||0), 0);
+  const stratN   = rank.length;
+  // 🛑 スクリーナーは資金を見ない。live は 1単元の建玉金額上限が別に立っていて、
+  // 超える銘柄は発火しても arm されない = 発注されない。素の発火数だけを出すと
+  // 「発注直前の候補が N 件ある」と読める。
+  const blockedN = rank.reduce((n,g) => n + (g.blocked_notional||0), 0);
+  const cards = [
+    ['口座建玉 / 上限', (sel.account_open??s.account_open_count) + ' / ' + (sel.account_max??'–')],
+    // 累計(決済の net + 建玉の含み)。
+    // 時価の無い建玉は含みに入っていないので、その銘柄を名指しする。
+    ...(d.ledger_total ? [['累計(決済+含み)', (() => {
+      const l = d.ledger_total;
+      if (l.error) return `<span style="color:var(--red)">読めない: ${esc(l.error)}</span>`;
+      const sign = v => (v > 0 ? '+' : '') + fmt(Math.round(v));
+      const note = `決済 ${sign(l.realized_net_jpy)}(${l.closed_n} 本)/ 含み ${sign(l.unrealized_jpy)}(${l.priced_n}/${l.open_n} 本)`
+        + (l.unpriced && l.unpriced.length ? ` / 時価なし: ${l.unpriced.join(', ')}` : '');
+      return `<b style="color:${l.total_jpy >= 0 ? 'var(--green)' : 'var(--red)'}">${sign(l.total_jpy)}</b>`
+        + `<div class="tag" style="font-weight:400;margin-top:2px">${note}</div>`;
+    })()]] : []),
+    // 🚨 **本数の枠とは別物**。監視集合(= 時価の 120 銘柄/リクエスト枠)に効くのは
+    // 銘柄数だけで、同じ銘柄に何アーム乗っても 1 銘柄。枠が効いているかを読むための行。
+    ['保有銘柄 / 枠', sel.account_max_symbols
+      ? (sel.account_open_symbols??'–') + ' / ' + sel.account_max_symbols
+        + `<div class="tag" style="font-weight:400;margin-top:2px">入口ごと ${sel.per_entry_max_symbols??'–'}</div>`
+      : (sel.account_open_symbols??'–') + ' / 無制限'],
+    ['スキャン対象', scanTargetCell(sel)],
+    ...(leverageCell(sel) ? [['資金枠(レバ余力)', leverageCell(sel)]] : []),
+    ['発火中の候補', blockedN
+      ? `${triggers - blockedN}<div class="tag" style="font-weight:400;margin-top:2px">`
+        + `+ ${blockedN} 件は資金上限で対象外</div>`
+      : triggers],
+    ['発火した戦略', stratN],
+    ['発注待ち (★)', armedN],
+    // 立花 API は**その日の口座合計**で見る(立花側の集計は 5:30〜翌3:30 の開局窓・
+    // 口座単位)。起動からの累計だと再起動でゼロに戻り、朝の fetch-daily も入らない
+    // ので「1万以内か」に答えられなかった。
+    ['立花 API(本日 5:30〜)', apiUsageLabel(d.api_usage, d.api_requests)],
+    ['entries', fmt(c.entries)], ['rejections', fmt(c.rejections)], ['forced flats', fmt(c.forced_flats)], ['emergency trips', fmt(c.emergency_trips)],
+  ];
+  $('counters').innerHTML = cards.map(([l,v]) =>
+    `<div class="card"><div class="label">${l}</div><div class="val">${v}</div></div>`).join('');
+  renderAPIUsage(d.api_usage, d.api_requests);
+
+  // 狙い (focus): the armed candidate, else the top candidate the bot would arm next.
+  const flatRows = rank.flatMap(g => g.rows || []);
+  let focus = null;
+  if (sel.armed_symbol) focus = flatRows.find(x => x.symbol === sel.armed_symbol);
+  // 資金上限で arm されない行は「狙い」に据えない — 一日動かない候補が
+  // 「これから発注する銘柄」の位置に居座る。
+  if (!focus) focus = flatRows.find(x => x.armed)
+    || flatRows.find(x => !x.blocked_notional) || flatRows[0] || null;
+  $('focus').innerHTML = focus ? focusCard(focus, sel.armed_symbol === focus.symbol) :
+    '<div class="focus"><div class="empty">候補なし(日足データ未投入か、対象銘柄なし)</div></div>';
+
+  // ランキングは**戦略ごと**に区切って出す。スコアの定義が戦略ごとに違うので
+  // (abs_momentum は上限なし、donchian は構造上 1.0 付近が上限)、全体を一列に
+  // 並べると abs_momentum が画面を独占し、他戦略も arm 済みの発注待ちも消える。
+  // 戦略の中でならスコアの大小に意味がある。
+  // 🛑 空売りは一目で分かるようにする。`direction: both` の 4 戦略は同じ戦略名で
+  // 買いと売りの両方を出すので、印が無いと画面上で区別できない。
+  // 買いには印を付けない — 大半が買いなので、付けると売りの視認性がかえって落ちる。
+  const sideBadge = s => s === 'SELL' ? '<span class="badge sell">売</span>' : '';
+  const rankState = x => x.armed ? '<span class="badge fire">🎯 発注待ち</span>'
+    : x.held ? '<span class="tag">建玉あり</span>'
+    // 資金上限を超える銘柄は arm 経路に乗らない。「枠待ち」と同じ見た目にすると
+    // 待っていればいずれ建つように読めるので、はっきり対象外と書く。
+    : x.blocked_notional ? '<span class="tag">資金上限で対象外</span>'
+    // 🔄 「発火(判断待ち)」から改名。LLM が arm 経路から
+    // 外れたので**判断者が居ない**。実際の状態は「条件は成立したが枠
+    // (top_n / per_strategy_n)が回ってこなかった」。旧ラベルのままだと
+    // 「AI が検討中」という誤読を生む(居ないのに居るように読める)。
+    : '<span class="badge wait">発火(枠待ち)</span>';
+  $('ranking').innerHTML = rank.length ? rank.map(g => `
+    <div class="focus" style="padding:12px 14px">
+      <div class="top"><span class="strat">${esc(g.strategy)}</span>
+        <span class="tag">発火 ${fmt(g.triggered)} 件${g.sell ? ` <b>買${fmt(g.buy)} / 売${fmt(g.sell)}</b>` : ''}${g.blocked_notional ? `(うち ${fmt(g.blocked_notional)} 件 資金上限で対象外)` : ''}</span>
+        ${g.armed ? `<span class="badge fire">★ 発注待ち ${fmt(g.armed)}</span>` : ''}</div>
+      <table style="margin-top:8px">
+        <thead><tr><th>銘柄</th><th>スコア</th><th>状態</th><th>詳細</th><th>寄り前 go/no-go(LLM・表示だけ)</th>${isLive() ? '<th>新規停止</th>' : ''}</tr></thead>
+        <tbody>${(g.rows||[]).map(x =>
+          `<tr><td>${x.armed?'<span class="star">★</span> ':''}<b>${esc(x.symbol)}</b> ${sideBadge(x.side)}</td>
+            <td>${fmt(x.score,2)}</td><td>${rankState(x)}</td>
+            <td class="tag">${esc(x.detail)}</td><td>${gonogoCell(x.symbol)}</td>${isLive() ? `<td>${blockCell(x.symbol)}</td>` : ''}</tr>`).join('')}</tbody>
+      </table>
+    </div>`).join('')
+    : '<div class="empty">発火中の候補なし(日足未投入か、今日は条件成立ゼロ)</div>';
+
+  // positions
+  const per = s.per_symbol || {};
+  const summaries = d.summaries || {};
+  let rows = [];
+  // 未決済(いま持っている建玉だけ)の合計。決済済みの net 合計とは別物なので
+  // 混ぜない: こちらは含み(未実現)・手数料/carry 未計上・気配のみの銘柄は
+  // そもそも評価できない。評価できなかった建玉は件数で出す(0円として足すと
+  // 「持っているのに損益ゼロ」に見える = 未約定を隠す嘘になる)。
+  // openEvalCostYen は**評価できた建玉だけ**の建値総額。率をこれで割らないと
+  // 分子(評価済みの含み)と分母(全建玉)がずれて率が薄まる。
+  let openN = 0, openUnevalN = 0, openPnlYen = 0, openCostYen = 0, openEvalCostYen = 0;
+  for (const sym of Object.keys(per)) {
+    const sm = summaries[sym] || {};
+    // last は **約定した値段だけ**。未約定(売買停止・気配のみ)の銘柄は
+    // backend が前日終値を last に入れずに stale/prev_close/quote_* で返すので、
+    // 含み損益・株価差・出口までは自動的に '–' のまま = 動いていない値段で
+    // 損益をでっち上げない。代わりに気配を出して「止まっている」ことを見せる。
+    const last = sm.last;
+    const haltTag = !sm.stale ? '' :
+      `<div class="tag halt">気配のみ・未約定</div>
+       <div class="tag">気配 ${sm.quote_bid?fmt(sm.quote_bid,1):'–'} / ${sm.quote_ask?fmt(sm.quote_ask,1):'–'}
+        ・前日終値 ${sm.prev_close?fmt(sm.prev_close,1):'–'}</div>`;
+    // 🚨 **板にいま載っている守り**(live のみ)。画面の TP/SL はこちらを主に出す。
+    // 台帳の凍結値は「建てたときの値」で、人間がアプリで締めた後は**実際には
+    // 起こらない値段**になる。live 以外では空 = 従来どおり凍結値。
+    const board    = (d.protective_board || {});
+    const boardBy  = board.by_symbol || {};
+    for (const p of (per[sym].open_positions||[])) {
+      // 3つの単位を混ぜない:
+      //   株価差(円/株) … 現在値 − 建値
+      //   tick        … 株価差 ÷ 呼値(建玉時に凍結)。TP/SL の判定はこの単位
+      //   含み損益(円) … 株価差 × 株数。口座に効く金額はこれ
+      // 呼値は 3000円以下=1円 / 3000〜5000円=5円 なので、株価差と tick は
+      // 銘柄によって最大5倍ずれる。
+      // 出口幾何は円/株で凍結され、建玉時に絶対価格へ確定している。
+      // broker の OCO に入っているのと同じ値段をそのまま出す(換算をユーザーに強いない)。
+      const q    = p.quantity || 0;
+      const dpx  = (last && p.entry_price) ? ((p.side==='SELL'?-1:1)*(last-p.entry_price)) : null;
+      const pnlYen = dpx===null ? null : dpx * q;
+      openN++;
+      openCostYen += (p.entry_price || 0) * q;
+      if (pnlYen === null) openUnevalN++;
+      else { openPnlYen += pnlYen; openEvalCostYen += (p.entry_price || 0) * q; }
+      const tpJPY = p.take_profit_jpy || 0, slJPY = p.stop_loss_jpy || 0;
+      const frozenTP = p.take_profit_price || 0, frozenSL = p.stop_loss_price || 0;
+      // 🛑 **板があれば板が主。**凍結値は消さず、食い違ったときだけ添える —
+      // 凍結値は「戦略が決めた出口」、板の値は「実際に起きること」で、どちらも意味がある。
+      const bg = boardBy[p.symbol] || null;
+      const tpPx = bg ? (bg.take_profit || 0) : frozenTP;
+      const slPx = bg ? (bg.stop_loss  || 0) : frozenSL;
+      const near = (a,b) => Math.abs((a||0)-(b||0)) < 0.001;
+      const drift = t => (bg && !near(t==='tp'?bg.take_profit:bg.stop_loss, t==='tp'?frozenTP:frozenSL))
+        ? `<br><span class="tag">板の値。建玉時は ${fmt(t==='tp'?frozenTP:frozenSL,1)}(人間が変更)</span>` : '';
+      // 🚨 多日建玉なのに板に守りが無い = **裸**。画面が凍結値の TP/SL を
+      // 平常どおり出していると、裸がどこにも出ない。
+      // 🚨 裸の判定は **server の籠**を読む。画面で `!bg` から推測すると、照会が
+      // 失敗した銘柄(板を確認できていない)を「守りが無い」と読んでしまう。
+      //   unguarded     … OPEN の多日建玉に守りが無い = 裸
+      //   closing_naked … 決済中で守りも決済注文も無い = 裸
+      //   unknown       … 照会そのものが失敗した = **分からない**
+      // 3 つ目を無言にすると、障害中は守りが本当に消えていても画面が何も言わない。
+      const inList = (k) => Array.isArray(board[k]) && board[k].includes(p.symbol);
+      const nakedTag =
+        inList('unguarded')     ? `<br><span class="tag halt">🚨 板に守りが無い(裸)— POST /api/live/protective/arm</span>`
+      : inList('closing_naked') ? `<br><span class="tag halt">🚨 決済中で守りも決済注文も無い(裸)— POST /api/live/protective/arm</span>`
+      : inList('unknown')       ? `<br><span class="tag halt">⚠ 板を確認できていない(照会失敗)— 守りの有無は不明</span>`
+      : '';
+      const boardAge = bg ? `<br><span class="tag">期日 ${bg.expire_on||'当日'} · ${board.fetched_at||''} 時点</span>` : '';
+      const pct = w => (p.entry_price>0 && w>0) ? fmt(w/p.entry_price*100,2)+'%' : '–';
+      const cls = v => v===null ? '' : (v>0 ? 'pnl-pos' : (v<0 ? 'pnl-neg' : ''));
+      const sgn = (v,d=0) => v===null ? '–' : (v>0?'+':'')+fmt(v,d);
+
+      // トレールアーム(bnf_reversion_trail 等)は TP を**意図的に持たない** —
+      // 出口は ratchet(arm で作動 → ピークから giveback 押したら決済)。
+      // ここを描かないと TP 欄が '–' / '+0.0円' になり、建玉の出口が画面から
+      // 消える。
+      // ratchet の単位は **円/株**(EvaluateExit が含み円/株 と比べる単位)。
+      const armJPY = p.ratchet_arm_jpy || 0, giveJPY = p.ratchet_giveback_jpy || 0;
+      const isTrail = tpPx <= 0 && armJPY > 0;
+      // s は建値からの含みを価格へ戻す符号。BUY は上、SELL は下が利。
+      const s = p.side === 'SELL' ? -1 : 1;
+      // peak / armed は OnTick が永続化した runtime state。**server の値をそのまま
+      // 使う**(画面で盛らない) — 下の protective_exit_* は server がこの peak から
+      // 計算しており、こちらだけ live 含みで上書きすると2つの数字が食い違う。
+      const peak = p.peak_unrealized_jpy || 0;
+      const armed = !!p.ratchet_armed;
+      const armPx  = p.entry_price + s*armJPY;              // ここに来たら作動
+      // 🛑 トレールの**床**: 決済線は `max(arm, peak − giveback)`。床は建玉ごとの版スタンプ
+      // (`ratchet_floor_at_arm`・migration 0013)で効き、**床の導入前の旧建玉には効かない**。
+      // ここを素の `peak − giveback` のままにすると、画面の式が engine から
+      // 静かにずれる。domain 側は exit.go が同じ床を使う。
+      const giveLine = p.ratchet_floor_at_arm ? Math.max(armJPY, peak - giveJPY) : (peak - giveJPY);
+      const trigPx = p.entry_price + s*giveLine;             // giveback 線(作動後)
+
+      // 作動済みトレールは守りの脚が2本(giveback 線と SL)あり、**遠い方には価格が
+      // 先に届かない**。どちらが効くかは engine の規則なので JS で判定せず
+      // domain.ProtectiveExit の答え(protective_exit_*)を読む。
+      // 例: giveback 線が SL の外側にあれば到達不能。
+      // これを「決済ライン」として出すのは、直したはずの誤読の作り直しになる。
+      const protPx = p.protective_exit_price || 0, protWhy = p.protective_exit_reason || '';
+      const slFirst = isTrail && armed && protWhy === 'stop_loss';
+      // 「出口まで」= 次に効く線までの距離。作動前は arm(上)、作動後は実際に
+      // 効く守り(下)。TP を持つ建玉は従来どおり TP まで。
+      const nextPx = !isTrail ? tpPx : (armed ? protPx : armPx);
+      const toTP = (last && nextPx>0) ? Math.abs(nextPx-last) : null;
+
+      const trailTail = !armed ? ''
+        : slFirst
+          ? `<br><span class="halt">⚠ giveback 線 ${fmt(trigPx,1)} は SL の外側 — 実際に効くのは SL ${fmt(protPx,1)}</span>`
+          : ` → 決済 ${fmt(protPx,1)}`;
+      const peakTag = `<br>· ピーク含み ${sgn(peak,1)}円`;
+      const tpCell = isTrail
+        ? `<td class="pnl-pos">トレール<br><span class="tag">arm +${fmt(armJPY,1)}円 (${pct(armJPY)}) @${fmt(armPx,1)}
+             ${armed?'· <b>作動中</b>':'· 未作動'}<br>giveback ${fmt(giveJPY,1)}円${peakTag}${trailTail}</span></td>`
+        : `<td class="pnl-pos">${tpPx?fmt(tpPx,1):'–'}<br><span class="tag">+${fmt(tpJPY,1)}円 (${pct(tpJPY)}) → +${fmt(tpJPY*q)}円</span>${drift('tp')}</td>`;
+
+      const pnlCells =
+        `<td class="${cls(pnlYen)}">${pnlYen===null?'–':sgn(pnlYen)+'円'}</td>
+         <td class="${cls(dpx)}">${sgn(dpx,1)}</td>`;
+      rows.push(`<tr><td>${esc(p.symbol)}</td><td class="side-${p.side}">${p.side}</td><td>${fmt(q)}</td>
+        <td>${fmt(p.entry_price,1)}</td><td>${fmt(last,1)}${haltTag}</td>
+        ${pnlCells}
+        ${tpCell}
+        <td class="pnl-neg">${slPx?fmt(slPx,1):'–'}<br><span class="tag">-${fmt(slJPY,1)}円 (${pct(slJPY)}) → -${fmt(slJPY*q)}円</span>${drift('sl')}${boardAge}${nakedTag}</td>
+        <td>${toTP===null?'–':fmt(toTP,1)+'円'}${isTrail?`<br><span class="tag">${armed?(slFirst?'SL(先に効く)まで':'決済ラインまで'):'作動まで'}</span>`:''}</td>
+        <td class="strat">${esc(p.strategy || '—')}</td>
+        <td>${esc(p.holding_mode)}${maxHoldTag(p)}</td><td>${esc(p.source)}</td>
+        <td class="tag">${esc(p.config_id)}</td>
+        <td>${closeCell(p)}</td></tr>`);
+    }
+  }
+  // 🛑 差分が無ければ DOM に触らない。毎回書き換えると、ちょうど押している最中の
+  // ボタンが作り直されて click が発火しない(押下が黙って消える)。
+  const positionsHTML = rows.length ? rows.join('') : '<tr><td class="empty" colspan="15">建玉なし</td></tr>';
+  // 🛑 止めるのは **#positions の書込だけ**。refresh() 全体を止めると、決済 fetch が
+  // 遅いあいだ緊急停止バナー・counters・接続ドットまで沈黙する —— しかもそれは
+  // 「裸になったかもしれない」まさにその操作の最中。banner は下で毎回更新される。
+  if (ACTION_BUSY === 0 && positionsHTML !== lastPositionsHTML) {
+    $('positions').innerHTML = positionsHTML;
+    lastPositionsHTML = positionsHTML;
+  }
+
+  // 一括決済ボタン: 何本消えるかをラベルに出し、live_config では出さない
+  // (backend も 409 で拒否する — 二重の閉じ)。実行中(disabled)はラベルを奪わない。
+  lastOpenN = openN;
+  const fb = $('btnFlattenAll');
+  if (fb) {
+    fb.style.display = (mode === 'live_config') ? 'none' : '';
+    if (!fb.disabled) fb.textContent = `⚠ 全建玉 ${openN} 本を成行決済`;
+  }
+
+  // 未決済トータル。評価できた建玉が1本も無ければ金額は出さない('–')。
+  const evalN = openN - openUnevalN;
+  const openCls = !evalN ? '' : (openPnlYen > 0 ? 'pnl-pos' : (openPnlYen < 0 ? 'pnl-neg' : ''));
+  const openCards = [
+    ['含み損益 合計 (未実現)', evalN ? (openPnlYen > 0 ? '+' : '') + fmt(openPnlYen) + '円' : '–', openCls],
+    ['建玉数', fmt(openN), ''],
+    ['評価できた建玉', openN ? evalN + ' / ' + openN : '–', ''],
+    ['建玉の総額 (建値×株数)', openN ? fmt(openCostYen) + '円' : '–', ''],
+    ['含み損益 / 建玉総額', (evalN && openEvalCostYen > 0) ? (openPnlYen > 0 ? '+' : '') + fmt(openPnlYen / openEvalCostYen * 100, 2) + '%' : '–', openCls],
+  ];
+  $('openTotals').innerHTML = openN ? openCards.map(([l, v, cls]) =>
+    `<div class="card"><div class="label">${l}</div><div class="val ${cls}">${v}</div></div>`).join('')
+    + (openUnevalN ? `<div class="card"><div class="label">評価不可 (気配のみ・未約定)</div>
+         <div class="val halt">${openUnevalN}</div></div>` : '')
+    : '';
+
+  // 監視中で今日まだ一度も約定していない銘柄。これが出ていないのに現在値が '–' なら
+  // 気配自体が来ていない = フィード側の問題、と切り分けられる(それが分離の目的)。
+  // 🛑 建玉つきと監視のみを分ける。TP/SL が止まるのは建玉がある銘柄だけで、
+  // arm しただけの銘柄(寄り直後の未約定など)に同じ文言を出すと「持っていないのに TP/SL?」と読まれる。
+  const halted = Object.keys(summaries).filter(k => summaries[k].stale).sort();
+  const heldSym = k => ((per[k] || {}).open_positions || []).length > 0;
+  const haltedHeld = halted.filter(heldSym), haltedWatch = halted.filter(k => !heldSym(k));
+  $('halted').innerHTML =
+    (haltedHeld.length
+      ? `<div class="tag" style="padding:6px 2px 4px">
+           <span class="halt">気配のみ・未約定 — 建玉あり (${haltedHeld.length}銘柄)</span> ${haltedHeld.map(esc).join(' ')}
+           — 約定が無いので TP/SL の評価も止まっています(再開すれば自動で戻ります)</div>`
+      : '')
+    + (haltedWatch.length
+      ? `<div class="tag" style="padding:4px 2px 10px">
+           <span class="halt">気配のみ・未約定 — 監視のみ (${haltedWatch.length}銘柄)</span> ${haltedWatch.map(esc).join(' ')}
+           — 建玉はありません。約定が付くまでエントリー判定を待っています(寄り直後は普通に出ます)</div>`
+      : '');
+  $('ts').textContent = new Date().toLocaleTimeString();
+}
+
+function focusCard(x, isArmed) {
+  const checks = (x.conditions||[]).map(cn =>
+    `<div class="chk ${cn.met?'met':'miss'}"><span class="ic">${cn.met?'✓':'○'}</span>
+       <span class="lab">${esc(cn.label)}</span><span class="got">${esc(cn.got)}</span></div>`).join('');
+  const head = isArmed ? '<span class="badge fire">🎯 ARM中</span>'
+              : (x.triggered ? '<span class="badge fire">発火</span>' : '<span class="badge wait">👀 条件待ち</span>');
+  const pct = Math.max(0, Math.min(100, (x.score||0)*100));
+  return `<div class="focus ${isArmed?'armed':''}">
+    <div class="top">${head}<span class="sym">${esc(x.symbol)}</span><span class="strat">${esc(x.strategy)}</span>
+      <span class="tag">score ${fmt(x.score,2)} (1.0=発火)</span></div>
+    <div class="scorebar"><i style="width:${pct}%"></i></div>
+    <div class="why">${esc(x.detail)}</div>
+    <div class="checks">${checks||'<span class="tag">条件データなし</span>'}</div>
+  </div>`;
+}
+
+// 「今すぐ arm ラウンド」— arm ループを1回手動起動(202=非同期受付)。
+// 中身は**決定論のテンプレート適用**(ミリ秒)。LLM は走らない。
+async function runAdvisor() {
+  const b = $('advisor-btn');
+  if (!b || b.disabled) return;
+  const old = b.textContent;
+  b.disabled = true; b.textContent = '実行中…';
+  try {
+    // 🛑 live は arm しない。ボタンは隠してあるが、経路も塞ぐ。
+    if (isLive()) { alert('LIVE は arm ラウンドを持ちません(銘柄選定は日足の決定論スキャン)。'); return; }
+    // 🛑 **api() を通す**。ハードコードの '/api' だとトラックを取り違える。
+    const r = await fetch(api('/advisor-trigger'), {method:'POST'});
+    if (r.status === 202)      b.textContent = '受付 — 結果は下に出ます';
+    else if (r.status === 409) b.textContent = '既に実行中(少し待つ)';
+    else if (r.status === 503) b.textContent = 'arm ループ OFF の構成';
+    else                       b.textContent = '失敗 (' + r.status + ')';
+  } catch (e) { b.textContent = '失敗(接続)'; }
+  setTimeout(() => { b.disabled = false; b.textContent = old; }, 6000);
+}
+
+// 全建玉の一括成行決済(期間の帳簿締め)。**一発で帳簿を空にする不可逆操作**
+// なので二段で確認する: ① 件数つき confirm ② 建玉数そのものを打たせる(惰性クリック
+// と誤クリックの両方を落とす)。live_config ではボタン自体を出さない — backend も
+// 409 で拒否する(二重の閉じ。実弾の全清算は人間が証券会社の画面でやる判断)。
+// close_reason=manual で記録されるので、台帳では戦略の自然な出口と区別できる。
+async function flattenAll() {
+  const b = $('btnFlattenAll');
+  if (!b || b.disabled) return;
+  const n = lastOpenN;
+  if (!n) { alert('OPEN の建玉がありません'); return; }
+  if (!confirm(`OPEN の建玉 ${n} 本を全部、成行で決済します。\n\n`
+    + '戦略の自然な出口を打ち切る操作です(close_reason=manual で記録)。\n'
+    + '期間の締めと異常時の退避以外では使わないでください。')) return;
+  if ((prompt(`確認のため建玉数「${n}」を入力してください`) || '').trim() !== String(n)) {
+    alert('入力が一致しないので中止しました(建玉は触っていません)');
+    return;
+  }
+  const old = b.textContent;
+  b.disabled = true; b.textContent = '決済中…';
+  try {
+    // 🛑 live の全清算は**提供しない**(API 側にも存在しない)。全建玉をボタン 1 つで
+    // 閉じる操作を実弾に持たせない — 個別決済だけを許す。
+    if (isLive()) { alert('LIVE では全清算を提供していません。建玉ごとの成行決済を使ってください。'); return; }
+    // 🚨 **必ず今見ているトラックへ送る**。ここを
+    // `/api/flatten-all` 固定にすると、**別トラックのタブで押すと research が
+    // 全清算される**という致命的な取り違えになる。api() は TRACK でパスを組む。
+    const r = await fetch(api('/flatten-all'), {method: 'POST'});
+    if (r.ok) {
+      const j = await r.json();
+      b.textContent = `決済 ${j.closed} / 失敗 ${j.failed} / external ${j.skipped_external}`;
+      if (j.failed) alert(`${j.failed} 本が閉じられませんでした(CLOSING のまま reconcile 回収)。ログを確認してください。`);
+    }
+    else if (r.status === 409) b.textContent = 'live_config では不可';
+    else if (r.status === 503) b.textContent = '未配線の構成';
+    else                       b.textContent = '失敗 (' + r.status + ')';
+  } catch (e) { b.textContent = '失敗(接続)'; }
+  setTimeout(() => { b.disabled = false; b.textContent = old; }, 8000);
+  setTimeout(refresh, 1000);
+}
+
+// ---- 寄り前の go/no-go(LLM・表示だけ・Phase D)----
+// 判定は bot の外の gonogo コマンドが ~/.stockbot/gonogo/ に書き、bot はそれを読んで出すだけ。
+// **発注経路は読まない**。止めるのは人間(live タブの「停止」ボタン)。research と live の両方に出す。
+let GONOGO = {};
+const GONOGO_CAT = {
+  accounting_fraud: '会計不正・不適切会計', audit_opinion: '監査意見の不表明・限定', earnings_delay: '決算発表の延期',
+  delisting_risk: '上場廃止のおそれ', going_concern: '継続企業の前提・資金繰り', administrative_action: '行政処分・重大な訴訟',
+  dilution: '大型の希薄化', other: 'その他',
+};
+function gonogoCell(sym) {
+  const g = GONOGO[sym];
+  if (!g) return '<span class="tag">未判定</span>';
+  if (g.status !== 'ok') return `<span class="badge wait" title="${esc(g.error || '')}">失敗</span>`;
+  const badge = g.verdict === 'no_go' ? '<span class="badge sell">NO-GO</span>'
+    : g.verdict === 'go' ? '<span class="badge fire">GO</span>' : '<span class="badge wait">不明</span>';
+  const cat = g.category && g.category !== 'none' ? ` <span class="tag">${esc(GONOGO_CAT[g.category] || g.category)}</span>` : '';
+  // 出典は http(s) だけをリンクにする(サーバも検査済み。二重に塞ぐ)。
+  const src = (g.sources || []).filter(s => /^https?:\/\//.test(s.url || '')).map((s, i) =>
+    `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.title || '')}">[${i + 1}]</a>`).join(' ');
+  const sum = g.summary || '';
+  const head = sum.length > 24 ? sum.slice(0, 24) + '…' : sum;
+  const at = (g.judged_at || '').slice(11, 16);
+  return `${badge}${cat}<details><summary class="tag">${esc(head)}</summary>
+    <div class="tag" style="white-space:normal;max-width:420px">${esc(sum)}<br>${src}<br>確度 ${esc(g.confidence || '–')} / 判定 ${esc(at)}</div></details>`;
+}
+function renderGoNoGoNote(v) {
+  const el = $('gonogoNote');
+  if (!el) return;
+  const miss = v.missing_armed || [];
+  const err = v.error ? ` ⚠ 判定ファイルを読めない: ${esc(v.error)}` : '';
+  el.innerHTML = `寄り前 go/no-go ${esc(v.date || '')}: 判定 ${fmt(Object.keys(v.symbols || {}).length)} 銘柄` +
+    (miss.length ? ` / <b>arm 済みなのに判定が無い ${fmt(miss.length)} 銘柄</b>(${miss.map(esc).join(' ')})
+      <button class="gonogorun" style="font-size:11px;padding:2px 8px;cursor:pointer">未判定を判定</button>` : '') + err;
+}
+// 「未判定を判定」: research と live の両方の arm 済みで判定が無い銘柄を、bot が gonogo を別プロセスで
+// 起動して判定する(数分で画面に出る)。**表示と記録だけ**。建った後の判定は採点で「後出し」に分かれる。
+// research と live のどちらのパスも同じ処理(判定ファイルは共有)。
+async function gonogoRunAction(btn) {
+  btn.disabled = true;
+  ACTION_BUSY++;
+  try {
+    const r = await fetch(api('/gonogo/run'), {method: 'POST'});
+    const txt = (await r.text()).trim();
+    if (r.status === 202) {
+      const syms = (JSON.parse(txt).symbols || []).join(' ');
+      logAction(true, '未判定の go/no-go を起動', `${syms}(数分で画面に出る・ログ ~/.stockbot/logs/gonogo.log)`);
+    } else if (r.status === 200) {
+      logAction(true, '未判定の銘柄なし', '');
+    } else if (r.status === 409) {
+      logAction(false, 'go/no-go は実行中', '終わってから押す(終われば画面に出る)');
+    } else {
+      logAction(false, `go/no-go を起動できず (HTTP ${r.status})`, txt);
+    }
+  } catch (e) {
+    logAction(false, 'go/no-go の起動を送信できず', String(e));
+  } finally {
+    ACTION_BUSY--;
+    btn.disabled = false;
+  }
+}
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button.gonogorun');
+  if (b) gonogoRunAction(b);
+});
+
+// ---- 銘柄ごとの新規停止(live のみ・Phase C)----
+// 止めるのは live のその銘柄の新規だけ。決済・守り・引け前フラット化は止まらない。
+// 状態の正本は bot のファイル(runtime/live_symbol_blocks.json)で、画面は dashboard の
+// symbol_blocks を描くだけ。paper には出さない(paper は止めない)。
+let BLOCKS = {};
+function blockCell(sym) {
+  if (!isLive()) return '';
+  return BLOCKS[sym]
+    ? `<span class="badge sell">停止中</span> <button class="symrelease" data-sym="${esc(sym)}"
+        style="font-size:11px;padding:2px 8px;cursor:pointer">解除</button>`
+    : `<button class="symblock" data-sym="${esc(sym)}"
+        style="font-size:11px;padding:2px 8px;cursor:pointer">停止</button>`;
+}
+function renderSymbolBlocks(d) {
+  const wrap = $('symbolBlocksWrap');
+  if (!isLive()) { BLOCKS = {}; if (wrap) wrap.style.display = 'none'; return; }
+  if (wrap) wrap.style.display = '';
+  const sb = d.symbol_blocks || {blocks: []};
+  BLOCKS = {};
+  for (const b of (sb.blocks || [])) BLOCKS[b.symbol] = b;
+  // 🛑 読めない・壊れているときは live の新規が**全部**止まっている(fail-close)。
+  const err = sb.error
+    ? `<div class="banner on">⛔ 銘柄の停止ファイルを読めません — 直すまで live の新規は全部止まっています(決済と守りは動きます)
+        <div class="tag" style="font-weight:400;margin-top:4px">${esc(sb.error)}</div></div>`
+    : '';
+  const rows = (sb.blocks || []).map(b =>
+    `<tr><td><b>${esc(b.symbol)}</b></td><td>${esc(b.blocked_at)}</td><td class="tag">${esc(b.note || '')}</td>
+      <td>${blockCell(b.symbol)}</td></tr>`).join('');
+  $('symbolBlocks').innerHTML = err + (rows
+    ? `<table><thead><tr><th>銘柄</th><th>停止した時刻</th><th>メモ</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table>`
+    : (sb.error ? '' : '<div class="empty">停止中の銘柄なし(ランキングの行の「停止」で止める)</div>'));
+}
+// 確認ダイアログは 1 回だけ(連続ダイアログは Chrome に抑止されうる)。停止は prompt が確認を兼ねる。
+async function symbolBlockAction(sym, release, btn) {
+  let note = '';
+  if (release) {
+    if (!confirm(`${sym} の live の新規停止を解除しますか?\n(解除すると、発火しだい実弾で建ちます)`)) return;
+  } else {
+    const v = prompt(`${sym} の live の新規を止めます(決済と守りは止まりません。解除するまで続きます)。\nメモ(任意)を入れて OK:`, '');
+    if (v === null) return;
+    note = v;
+  }
+  const label = `${sym} の新規${release ? '停止を解除' : 'を停止'}`;
+  btn.disabled = true;
+  ACTION_BUSY++;
+  try {
+    const r = await fetch(api(release ? '/symbol-blocks/release' : '/symbol-blocks'), {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({symbol: sym, note}),
+    });
+    const txt = (await r.text()).trim();
+    if (r.ok) {
+      logAction(true, label, note);
+    } else {
+      logAction(false, `${label} できず (HTTP ${r.status})`, txt);
+      alert(`❌ ${label} できませんでした (HTTP ${r.status})\n\n${txt}`);
+    }
+  } catch (e) {
+    logAction(false, `${label} を送信できず`, String(e));
+    alert(`❌ ${label} を送信できませんでした: ${e}`);
+  } finally {
+    ACTION_BUSY--;
+    btn.disabled = false;
+    refresh();
+  }
+}
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button.symblock, button.symrelease');
+  if (!b) return;
+  symbolBlockAction(b.dataset.sym, b.classList.contains('symrelease'), b);
+});
+
+// 操作の結果を **再描画されない場所**へ追記する。alert と違い、ブラウザが
+// ダイアログを抑止していても残り、後から読み返せる。
+function logAction(ok, title, detail) {
+  const el = $('actionLog');
+  if (!el) return;
+  const t = new Date().toLocaleTimeString();
+  const line = `${ok ? '✅' : '❌'} ${t} ${title}${detail ? '\n    ' + detail : ''}`;
+  el.textContent = line + (el.textContent ? '\n' + el.textContent : '');
+}
+
+// 建玉ごとの「成行決済」ボタン。external(他人/手動の建玉)は bot が触らないので
+// 出さない。close_reason は manual で記録され、台帳では戦略の自然な出口
+// (take_profit/stop_loss/…)と区別される — 常用すると forward 標本が裁量混じりに
+// なるので、用途は異常時の退避と期間の締めだけ。
+function closeCell(p) {
+  if (p.source === 'external') return '<span class="tag">—</span>';
+  return `<button onclick="closePosition(${p.id}, '${esc(p.symbol)}', ${p.quantity||0}, this)"
+    style="font-size:11px;padding:2px 8px;cursor:pointer">成行決済</button>`;
+}
+
+// 🚨 **結果は必ず操作ログに残す。**ボタンのラベルは次の描画で消えるので、
+// HTTP 500 の本文「broker rejected the settle order … (left CLOSING for reconcile)」が
+// 1 秒で消えると、人間には「押しても反応しない」としか見えない。
+// 実弾の決済が通らなかったという情報を画面から落としてはいけない。
+//
+// 🛑 **成功では alert を出さない。**Chrome は同一ページから短時間に複数のダイアログが
+// 出ると「これ以上ダイアログを表示しない」を提示し、一度チェックされると confirm() が
+// false を返す = **ボタンがまた完全に無反応になる**(まさに今回の症状)。
+// ダイアログの回数を増やさない。失敗だけ alert で、見逃してはいけないので。
+async function closePosition(id, symbol, qty, btn) {
+  if (!confirm(`${symbol} を ${qty} 株、成行で決済します。よろしいですか?\n(戦略の出口を打ち切ります — close_reason=manual で記録されます)`)) return;
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '決済中…';
+  ACTION_BUSY++;
+  // 🛑 fetch は中断しない。中断するとサーバ側の ctx が切れ、守りを cancel した後・
+  // 返済の前で落ちれば建玉が裸になる。期限は「まだ返ってこない」を伝えるだけ。
+  const wd = setTimeout(() => logAction(false, `${symbol} 成行決済 — 45 秒経過、まだ応答がありません`,
+    'サーバは処理を続けています。押し直さないでください。'), ACTION_WATCHDOG_MS);
+  try {
+    const r = await fetch(api('/positions/close'), {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({position_id: id}),
+    });
+    const txt = (await r.text()).trim();
+    if (r.ok) {
+      btn.textContent = '決済済み';
+      logAction(true, `${symbol} 成行決済を受理`, txt);
+    } else {
+      // 失敗はボタンを元に戻す(押し直せる状態にする)。理由はログと alert に残る。
+      btn.disabled = false; btn.textContent = old;
+      logAction(false, `${symbol} 成行決済できず (HTTP ${r.status})`, txt);
+      alert(`❌ ${symbol} 決済できませんでした (HTTP ${r.status})\n\n${txt}\n\n` +
+        `⚠ 守りの脚は決済の前に取り消されます。この建玉が裸になっていないか、\n` +
+        `  画面の 🚨 タグと証券アプリで確認してください。`);
+    }
+  } catch (e) {
+    btn.disabled = false; btn.textContent = old;
+    logAction(false, `${symbol} 成行決済を送信できず`, String(e));
+    alert(`❌ ${symbol} 送信できず: ${e}`);
+  } finally {
+    clearTimeout(wd);
+    ACTION_BUSY--;
+    setTimeout(refresh, 500); // 行は次の refresh で消える(閉じていれば)
+  }
+}
+
+// 🚨 **緊急停止は結果を確かめる。**従来は r.ok も本文も見ておらず、live の緊急停止が
+// 失敗しても画面は何も言わなかった —— 成行ボタンで直したのと同じバグが、より重要な
+// コントロールに残っていた。押して何も起きない緊急停止は、無いより悪い。
+async function controlAction(label, path, btn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '実行中…';
+  ACTION_BUSY++;
+  const wd = setTimeout(() => logAction(false, `${label} — 45 秒経過、まだ応答がありません`,
+    'サーバは処理を続けています。'), ACTION_WATCHDOG_MS);
+  try {
+    const r = await fetch(path, {method: 'POST'});
+    const txt = (await r.text()).trim();
+    if (r.ok) {
+      logAction(true, label, txt);
+    } else {
+      logAction(false, `${label} 失敗 (HTTP ${r.status})`, txt);
+      alert(`❌ ${label} に失敗しました (HTTP ${r.status})\n\n${txt}`);
+    }
+  } catch (e) {
+    logAction(false, `${label} を送信できず`, String(e));
+    alert(`❌ ${label} を送信できませんでした: ${e}`);
+  } finally {
+    clearTimeout(wd); ACTION_BUSY--;
+    btn.disabled = false; btn.textContent = old;
+    refresh();
+  }
+}
+
+$('btnStop').onclick = async () => {
+  if (!confirm('緊急停止しますか?(新規エントリーを全停止)')) return;
+  await controlAction('緊急停止', api('/emergency-stop') + '?reason=dashboard', $('btnStop'));
+};
+
+$('btnResume').onclick = async () => {
+  if (!confirm('再開しますか?')) return;
+  await controlAction('再開', api('/emergency-resume'), $('btnResume'));
+};
+
+setTrack(TRACK);   // 初回の refresh() / refreshPerformance() はこの中で走る
+setInterval(refresh, 2000);
+setInterval(refreshPerformance, 10000);
+
+</script>
+</body>
+</html>

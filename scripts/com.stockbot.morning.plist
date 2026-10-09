@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">
+<!--
+  stock-bot 朝ルーチン launchd agent。
+  平日(月〜金)07:00 JST に ~/.stockbot/stockbot-routine.sh morning を実行:
+    fetch-daily(前日確定分の日足を立花からマージ)→ universe-screen(その日の
+    ユニバースを選定)→ forward-report のログ追記。
+  07:45 ではなく 07:00 なのは、プール(プライム内国株 1,551銘柄)の日足更新に
+  実測で約40分かかり、立花の推奨窓(5:30〜8:00)を超えてしまうため。
+  土日は発火しない(Weekday の無い定義は毎日動き、休日にプール全銘柄ぶんの履歴取得を
+  出してしまう。立花は閉局・休日・メンテ中のアクセスを控えるよう案内している)。
+  平日の祝日は script 側が休場カレンダーを見て fetch-daily を飛ばす(tachibana_off_hours)。
+  金曜の日足は月曜朝の取得で入るので、週末に引く必要は無い。Mac スリープ等で場中に
+  遅延発火した場合も script 側が fetch を skip する(bot とのセッション蹴り合いを避ける)。
+
+  TCC 制約: launchd は Desktop/ 配下のスクリプトを起動できないため canonical は
+  ~/.stockbot/(db-backup と同じパターン)。設置は make routine-install。
+
+  Load:   launchctl load ~/Library/LaunchAgents/com.stockbot.morning.plist
+  Unload: launchctl unload ~/Library/LaunchAgents/com.stockbot.morning.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockbot.morning</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/USERNAME/.stockbot/stockbot-routine.sh</string>
+        <string>morning</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>7</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>7</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>7</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>7</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>7</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>STOCKBOT_REPO</key>
+        <string>/Users/USERNAME/src/stock-bot</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/morning.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/morning.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USERNAME/.stockbot</string>
+</dict>
+</plist>

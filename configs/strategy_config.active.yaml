@@ -1,0 +1,33 @@
+# Active strategy config. The committed default is no_trade so the
+# bot runs its loops and places nothing until an edge is proven.
+# strategy_name は bot の engine に載っている名前(戦略カタログのメニュー)しか起動しない。
+# live で起動してよい戦略は hard_limits.yaml の live_allowed_strategies が別に決める。
+
+config_id: "no_trade_seed_v1"
+symbol: "7203"
+strategy_name: no_trade            # no_trade(回すなら戦略カタログのメニューにある名前)
+mode: paper_config
+holding_mode: intraday             # intraday | multiday
+exec_kind: margin_oneday           # cash | margin_oneday | margin_system
+ttl_minutes: 120
+
+entry:
+  direction: both                  # both | buy_only | sell_only
+  max_spread_ticks: 5
+
+exit:
+  take_profit_jpy: 100
+  stop_loss_jpy: 50
+  max_hold_minutes: 240
+  extension_max_minutes: 0
+  extension_unrealized_jpy: 0
+  early_exit_window_minutes: 0
+  early_exit_target_jpy: 0
+  ratchet_arm_jpy: 0
+  ratchet_giveback_jpy: 0
+
+risk:
+  quantity: 100
+  max_open_positions: 1
+  max_trades_in_this_window: 3
+  max_loss_in_this_window_jpy: 8000

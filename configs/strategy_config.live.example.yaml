@@ -1,0 +1,64 @@
+# LIVE track の戦略テンプレート(STOCKBOT_LIVE_STRATEGY_CONFIG)。
+#
+# 使い方: このファイルを configs/strategy_config.live.yaml にコピーし、
+# strategy_name を回したい戦略に変えて、STOCKBOT_LIVE_STRATEGY_CONFIG で指す。
+#
+#   STOCKBOT_LIVE_STRATEGY_CONFIG=configs/strategy_config.live.yaml
+#
+# 🛑 これを置いただけでは**何も建ちません**。実弾を出すには別途:
+#   1. hard_limits.yaml の live_allowed_strategies に strategy_name を追加
+#      (= 人間の昇格 commit。catastrophe_guards_test.go の同時更新を強制される)
+#   2. STOCKBOT_LIVE_CONFIRMED=1 / STOCKBOT_TACHIBANA_OCO_VERIFIED=1
+#   3. bot_config.live.yaml で resource 条件を設定(下の「資金条件」参照)
+# 詳細は docs/ARCHITECTURE.md の「hybrid」節と CLAUDE.md §4。
+#
+# ── symbol: "*" と selector の関係 ────────────────────────────────
+# symbol: "*" = bot_config.live.yaml の symbols 全部に当てるテンプレート。
+# bot_config.live.yaml で selector.enabled: true にすると、bot は日足で全銘柄を
+# **決定論的に**ランキングし(LLM は一切関与しない)、資金条件を満たす上位から
+# 空き枠のぶんだけ arm する。arm されなかった銘柄は no_trade のまま。
+#
+# ── 出口(exit:)を 0 のままにしている理由 ─────────────────────────
+# selector が arm できるのは**出口を自前計算する戦略だけ**。
+#   bnf_reversion / bnf_intraday_reversion  … 25日線までの距離 + 8% ストップ
+#   abs_momentum_v2 / atr_breakout_v2 / donchian_breakout_v2 … ATR スケール
+# これらは Signal 側で TP/SL を決めるので、ここの exit: は**読まれない**。
+# 0 のままにしておくと hard_limits の範囲検査もスキップされる(0 = 未検査)。
+# 🛑 出口を config から読む戦略(GKM / PEAD / 52週高値)をここに書いても arm
+# されない。arm 可能な集合は selector のコードが唯一の正本。
+
+config_id: "live_v1"
+symbol: "*"                       # bot_config.live.yaml の symbols 全部
+strategy_name: no_trade           # ← 回したい戦略に変える(既定は fail-safe の no_trade)
+mode: live_config
+holding_mode: multiday            # intraday なら 14:50 に強制フラット化される
+exec_kind: margin_system         # 制度信用6ヶ月。現物なら cash
+ttl_minutes: 0                    # 日足戦略: 場中の TTL 失効なし
+
+entry:
+  direction: buy_only             # 空売りを混ぜない(実弾の初期は片側だけ)
+  max_spread_ticks: 5
+
+exit:
+  # 🛑 上記のとおり **arm 可能な戦略はここを読まない**。0 のまま触らないこと。
+  take_profit_jpy: 0
+  stop_loss_jpy: 0
+  max_hold_minutes: 0
+  extension_max_minutes: 0
+  extension_unrealized_jpy: 0
+  early_exit_window_minutes: 0
+  early_exit_target_jpy: 0
+  ratchet_arm_jpy: 0
+  ratchet_giveback_jpy: 0
+
+risk:
+  quantity: 100                   # 単元。エッジ証明前に上げない(CLAUDE.md エッジ規律)
+  max_open_positions: 1           # 1 銘柄あたり(ナンピン禁止とは別軸)
+  max_trades_in_this_window: 3
+  max_loss_in_this_window_jpy: 8000
+
+# ── 資金条件はここではなく bot_config.live.yaml 側 ────────────────
+#   risk.account_max_open_positions   同時に持てる建玉数(口座全体)
+#   risk.max_gross_notional_ratio     建玉合計 ≤ 委託保証金 × 倍率(既定 1.0)
+#   selector.max_position_notional_jpy 1単元の金額上限(例 300000 = 100株で30万以下)
+#   selector.rearm_interval_min       ランキングを引き直す間隔

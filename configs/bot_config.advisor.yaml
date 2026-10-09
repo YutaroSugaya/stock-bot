@@ -1,0 +1,131 @@
+# 研究モードの bot config — **実価格(立花本番API・参照系)× 紙執行** + arm ループ
+# (make start が使う)。既定の bot_config.yaml(arm ループ OFF)を汚さない別ファイル。
+#
+# broker: paper_live_feed = 価格/日足は立花本番 API、注文・建玉・損益は paper の帳簿。
+# 実弾は型として飛ばない(フィードは発注メソッドを持たない port.MarketFeed)。
+# 素の paper(固定シード価格 2500)では損益が実勢と無関係な嘘になるため使わない。
+#
+# 前提: source .env(立花 公開鍵認証 + STOCKBOT_DATABASE_URL)、
+#       backend/data/<sym>_daily.csv(make fetch-daily で更新)。
+# ⚠ `claude` CLI は arm には要らないが、引け後の日次総評 段2(発注経路の外)が使うので
+#    PATH には必要(make start が起動時に確認する)。
+
+mode: paper_config                  # advisor は paper 必須(live は不可)
+broker: { kind: paper_live_feed }   # 実フィード × 紙執行
+
+# 研究モード: paper は実弾と違い資金保護の必要が無いので、
+# ポジション数・損失 cap を実質無効化して「戦略に一致した全シグナル」を収集する
+# (cap で entry を絞ると forward サンプルが censoring され検証が遅く・歪む)。
+# 実弾昇格時はこの値を使わない — live は bot_config.live.example.yaml の慎重設定
+# + live allowlist + 人間ゲートが別に立っている。
+risk:
+  max_daily_loss_jpy: 1000000               # per-symbol(実質無効・記録は net で残る)
+  max_consecutive_losses: 99
+  max_open_positions: 1                     # 同一銘柄は1本(ナンピン禁止と整合)
+  account_max_open_positions: 5000          # 実質無制限(200銘柄 × 12アーム = 2,400 + 多日保有の繰越)
+  # ↑ 200(= 日次ユニバースの件数)にしてはいけない。ユニバースは毎朝入れ替わるので、
+  #   建玉が載りうる銘柄の**和集合は日を追って200を超える**(外れた銘柄の建玉は残る)。
+  #   cap が効くと研究モードの前提「トリガー成立は全部エントリー」が壊れ、標本が
+  #   censoring される。実質無制限を保つための値であって、実弾の建付けではない。
+  #   下限は `TestResearchAccountCapExceedsUniverseTimesArms` が 銘柄数 × アーム数 で機械強制する。
+  account_max_daily_loss_jpy: 10000000      # 実質無効(暴落日のサンプルを切らない)
+  disable_consecutive_loss_guards: true     # 連敗ガードも研究では censoring になる
+
+  # --- 監視銘柄の予算 ---
+  # 時価は 1 リクエスト 120 銘柄までで、BatchQuoteFeed は 121 銘柄目から間隔を伸ばす(増えるのは
+  # 時価の実効間隔)。監視集合は research / live で共有なので、paper の建玉が live の決済判定まで粗くする。
+  # 6 entries × 12 = 72 ≤ 120(`symbol_budget_guard_test` が固定)。**入口ごとの 12 は変えない**。
+  # 🛑 `account_max_open_positions` は**下げない**。本数は監視集合に効かない(同じ銘柄に複数アーム乗っても
+  #    1 銘柄)ので、絞るべきは銘柄数だけ。
+  account_max_open_symbols: 72
+  # 入口ごとの予約枠。全体の枠を先着順で配ると、発火の多い入口が食い尽くして
+  # たまにしか発火しない入口が新しい銘柄を開けない。
+  # 6 入口 × 12 = 72 で整合する。🛑 **アームではなく入口**(兄弟 `X` / `X_trail` は
+  # 同じ枠を共有し、片方が入った銘柄はもう枠を消費しない)— アーム単位で数えると
+  # 枠の境界でペアの 2 本目だけが弾かれ、ペア差が構造的に測れなくなる。
+  per_entry_max_open_symbols: 12
+
+advisor_v2:
+  enabled: true                     # ← arm ループ ON(config の作り方は下の arm_source)
+  # template = 決定論(LLM は arm 経路に居ない)。llm にすると LLM 経路が生き返る
+  # (条件は docs/ARCHITECTURE.md の advisor の節)。
+  arm_source: template
+  # --- 回す入口 ---
+  # コードのメニュー(strategy.DefaultScreeners = 入口 10 / 18 アーム)から**入口単位**で絞る。
+  # 兄弟 `_trail` は入口と一緒に回る(bnf / day2 / stabilized / bnf_intraday の 4 入口はペア、
+  # pjd / hvp は単独 → **入口 6 / 10 アーム**)。
+  # 🛑 綴りの誤り・兄弟名・重複は起動時 error(fail-close)。`research_config_guard_test` が
+  #    yaml とテストの同時更新を強制する。
+  entries:
+    - bnf_reversion
+    - bnf_day2_reversion
+    - bnf_stabilized_reversion
+    - bnf_intraday_reversion
+    - post_jump_drift
+    - high_volume_premium
+  # 1 ラウンドで同時に走らせる LLM(claude サブプロセス)の本数(LLM 経路のみ)。銘柄ごとの生成は
+  # 独立なので並列にできる。利用上限に当たるなら下げる(advisor_runs の usage_limited / status=cli_error)。
+  max_concurrent: 10
+  # make start は backend/ を CWD に go run するので prompt_path は backend/ 相対(= ../prompts)。
+  prompt_path: "../prompts/generate_strategy_config.md"
+  cli_path: "claude"
+  working_dir: ""
+  output_dir: ""                    # 空=~/.stockbot/ai_output に raw stdout を監査アーカイブ(LLM 経路のみ)
+  scan_interval_sec: 60             # 決定論スキャン間隔(秒)・LLM不使用。急落はこの周期で検知
+  # 入口条件は直近の確定日足だけで決まる(場中にトリガー条件は変化しない)ので、arm 時刻をこの
+  # heartbeat で散らさない。
+  interval_min: 1
+  # screen_snapshots の書込周期(分)。**arm 周期とは別**。1分 arm のまま
+  # 周期を共有すると **648,000 行/日**(1ラウンド 2,400 行 = 200銘柄 × **12** スクリーナー
+  # × 約270ラウンド)。ランキングは日足由来で日中不変なので、周期を分離すれば
+  # 1日 約14,400 行に収まる。
+  # 🛑 **ただし picked 列だけは日中に変わる**(建玉の出入りで枠が移る)ので、
+  #    picked が変わったときは周期の内側でも書く —— **差分の数十行だけ**。
+  snapshot_interval_min: 60
+  # 寄り前ウォームアップ: その日の最初の arm ラウンドを寄り15分前(08:45)に前倒し、
+  # 9:00 時点で arm 済みにする。入力は前日確定足なので判断材料は 9:00 実行と同一 —
+  # 寄り直後の初動を取り逃さないため(決定論 arm はミリ秒なので待ち時間は無いが、
+  # 「9:00 に arm 済み」という状態そのものが要る)。
+  pre_open_min: 15
+  # ⚠ 以下は **LLM 経路(arm_source: llm)専用**の knob。決定論 arm では未使用。
+  # -1 = 制限なし(打ち切らない)。有限にすると長考するモデルで毎 run が timeout し、fail-closed で
+  # config を一切 arm しない。bot 停止(SIGTERM)では親 ctx 経由で道連れに止まるので、プロセスは残らない。
+  timeout_seconds: -1
+  # 研究モード: トリガー成立した候補は top_n を上限に「全部」arm する
+  # (決定論 arm なので**フィルタは無い**)。
+  # 生成は直列(テンプレート適用はミリ秒)、arm も ranked 順に直列(再現性のため)。
+  # 保有中銘柄は枠を消費しない。決定論エンジン(スキャン→ゲート→発注)は別経路なので、
+  # advisor が遅くても取引自体は止まらない。
+  # 全体の上限。実効上限は per_strategy_n × スクリーナー数(`entries` で絞った集合)。拘束すると
+  # ペアの片方が次ラウンドに回って建値がずれるので、拘束しない値にする。
+  top_n: 40
+  # **戦略あたり**の上限。全体を score 降順で取るとスコアの定義が戦略ごとに違うせいで
+  # 1 戦略が全枠を独占するので、枠を戦略に配る。
+  per_strategy_n: 2
+
+# 執行区分は立花が実際に約定できるものだけ(一日信用は非対応)。paper の結果を
+# そのまま live に持ち上げられるよう、paper でも同じ制約で回す。
+holding:
+  intraday: { exec_kind: cash }     # 立花は一日信用(margin_oneday)非対応 → 現物
+  multiday: { exec_kind: margin_system }
+
+# 監視ユニバース(全て hard_limits.allowed_symbols の内側)。arm ループは日足で
+# ランキングし top_n 銘柄について**テンプレートから決定論で** config を作る。
+# **毎朝 07:00 に選び直す**: scripts/stockbot-routine.sh morning が cmd/universe-screen を回して
+# hard_limits.allowed_symbols から規則(単元 100 株 ≤ 200 万円 かつ 売買代金中央値 ≥ 10 億円/60 日)で
+# 選んだ銘柄をこのファイルへ書く。
+#
+# symbols: より優先し、**読めない/空なら起動拒否**(config.ResolveSymbols の fail-close)。
+# 黙って静的リストへ縮退すると「ユニバースを絞ったつもりで絞れていない」まま
+# 走り出すため。選定に失敗した朝は前日のファイルが残るので、bot は「昨日の
+# ユニバース」で起動する(古いユニバースで動く方が、動かないよりまし)。
+symbols_file: "~/.stockbot/universe/today.txt"
+
+# --- 資金キャパシティ・フィルタ ---
+# `max_position_notional_jpy` は最小単元(100 株)の建玉金額の上限で、超える銘柄はユニバースごと外す
+# (実弾で実際に張れる価格帯に絞る。`TestAdvisorConfigKeepsNotionalCap` が固定)。
+# selector.enabled は **false のまま**(決定論セレクタは advisor 経路と二重に arm する。テストが固定)。
+# ここは knob を共有しているだけで、二重定義にすると「片方だけ効いている」事故が起きる。
+selector:
+  enabled: false
+  max_position_notional_jpy: 2000000

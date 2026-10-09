@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">
+<!--
+  stock-bot 寄り前の銘柄判定(go/no-go)launchd agent。**表示と記録だけ** — bot は読まない。
+  平日 08:15 と 08:40(失敗分の拾い直し)に ~/.stockbot/stockbot-routine.sh gonogo を実行:
+    ビルド済み ~/.stockbot/bin/gonogo が今日 arm しうる銘柄を claude CLI(WebSearch / WebFetch だけ)で
+    判定し、~/.stockbot/gonogo/YYYY-MM-DD.jsonl と .md を書く。bot が起動していなくても動く。
+  休場日・今日のユニバースが無い・日足が古い・場が引けた後は gonogo 自身が何もせず終わる。
+  同じ判定は make start の catchup の最後でも走る(冪等: 判定済みの銘柄は判定し直さない)。
+
+  TCC 制約: launchd 配下のバイナリは Desktop(repo)に触れた瞬間に止められるので、
+  ~/.stockbot の bin / data / universe / configs の写しだけで動く(写しは catchup が置く)。
+  ⚠ launchd 配下で claude CLI が認証込みで動くかは `stockbot-routine.sh gonogo-probe` で確かめる。
+
+  設置は make start の catchup が自動で行う(sync_routine_assets)。
+
+  Load:   launchctl load ~/Library/LaunchAgents/com.stockbot.gonogo.plist
+  Unload: launchctl unload ~/Library/LaunchAgents/com.stockbot.gonogo.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockbot.gonogo</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/USERNAME/.stockbot/stockbot-routine.sh</string>
+        <string>gonogo</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>15</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>15</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>15</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>15</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>15</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>40</integer>
+        </dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>STOCKBOT_REPO</key>
+        <string>/Users/USERNAME/src/stock-bot</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/gonogo.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/gonogo.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USERNAME/.stockbot</string>
+</dict>
+</plist>

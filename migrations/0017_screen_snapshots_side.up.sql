@@ -1,0 +1,19 @@
+-- 0017: screen_snapshots に **向き** を足す。
+--
+-- `direction: both` の 4 戦略(abs_momentum_v2 / atr_breakout_v2 /
+-- donchian_breakout_v2 / high_52w_momentum)は売りも出すが、
+-- スナップショットに向きの列が無く、買いと売りが同じ行形で混ざっていた。
+--
+-- 🛑 これが無いと **「発火したが建たなかった売り」がどこにも残らない**。
+-- 建玉になった売りは positions.side に残る。残らないのはスキャン段階の売りで、
+-- 事前登録した切り分け —— 売りの標本がゼロのとき、それが
+--   (a) loanable_symbols が空(人間の commit 漏れ)
+--   (b) 真に非貸借(not_loanable)
+--   (c) そもそもトリガーが出ていない
+-- のどれなのか —— の (c) は、この列でしか判定できない。
+--
+-- 空文字は「買い専用スクリーナー(BNF 等)」= 向きの概念が無い行。NULL にしないのは
+-- 「まだ書いていない」と「向きが無い」を後から区別する必要が無く、集計で
+-- coalesce を強いるほうが読み間違いを生むため。既存行は 0016 以前のもので
+-- 全て買いだが、**遡って 'BUY' を書かない** — 観測していない事実を捏造しない。
+ALTER TABLE screen_snapshots ADD COLUMN IF NOT EXISTS side TEXT NOT NULL DEFAULT '';

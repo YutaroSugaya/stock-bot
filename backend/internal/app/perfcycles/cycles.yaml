@@ -1,0 +1,7 @@
+# 戦績の切り替え単位(画面の期間選択)。期間の境界(開始日と台帳 DB)はここが SSOT。
+# 期間を区切るときは行を足して current を移し、朝ジョブ(scripts/stockbot-routine.sh)の
+# STOCKBOT_CYCLE_SINCE と揃える(perfcycles_test が縛る)。コードは変えない。
+# db はその期間の台帳。同じ db が続く期間は次の since で切る。
+current: c1
+cycles:
+  - {key: c1, label: "all", db: stockbot, since: "2026-09-14"}

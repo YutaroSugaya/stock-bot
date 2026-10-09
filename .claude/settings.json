@@ -1,0 +1,85 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make help)",
+      "Bash(make check-backend)",
+      "Bash(make check)",
+      "Bash(make guard)",
+      "Bash(make guard-fast)",
+      "Bash(make guard-hooks)",
+      "Bash(make fmt-check)",
+      "Bash(make test)",
+      "Bash(make test-race)",
+      "Bash(make vet)",
+      "Bash(make build)",
+      "Bash(make secret-scan)",
+      "Bash(go build ./...)",
+      "Bash(go vet ./...)",
+      "Bash(go test ./...)",
+      "Bash(bash scripts/arch-guard.sh)",
+      "Bash(bash scripts/secret-scan.sh)",
+      "Bash(bash .claude/hooks/pretooluse-deny_test.sh)",
+      "Bash(bash .claude/hooks/pre-push-scope_test.sh)",
+      "Bash(bash .claude/hooks/pre-push_test.sh)",
+      "Bash(bash .claude/hooks/docs-sync-check_test.sh)",
+      "Bash(bash .claude/hooks/pre-stop-tdd_test.sh)",
+      "Bash(bash .claude/hooks/session-start_test.sh)",
+      "Bash(bash .claude/hooks/enforcement-guard_test.sh)",
+      "Read(//Users/*/.stockbot/**)"
+    ],
+    "deny": [
+      "Write(//Users/*/.stockbot/**)",
+      "Edit(//Users/*/.stockbot/**)",
+      "Write(//Users/*/Library/LaunchAgents/**)",
+      "Edit(//Users/*/Library/LaunchAgents/**)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pretooluse-deny.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/enforcement-guard.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-stop-checks.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/docs-sync-check.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

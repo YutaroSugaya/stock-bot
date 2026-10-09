@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">
+<!--
+  stock-bot 週次 forward-report launchd agent。
+  毎週金曜 15:40 JST(大引け・make stop の後)に ~/.stockbot/stockbot-routine.sh weekly を実行:
+    ビルド済み ~/.stockbot/bin/forward-report で今週までの forward 集計をログに残す。
+  READ-ONLY(SELECT のみ)なので bot 稼働中でも安全。
+
+  TCC 制約: launchd から Desktop 配下で make / go run は動かない(getcwd:
+  Operation not permitted)ため、make routine-install がバイナリを ~/.stockbot/bin/ に
+  ビルドして置き、weekly タスクは repo に依存せず走る(db-backup と同じ発想)。
+
+  設置は make routine-install(canonical script は ~/.stockbot/)。
+
+  Load:   launchctl load ~/Library/LaunchAgents/com.stockbot.weekly.plist
+  Unload: launchctl unload ~/Library/LaunchAgents/com.stockbot.weekly.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockbot.weekly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/USERNAME/.stockbot/stockbot-routine.sh</string>
+        <string>weekly</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>5</integer>
+        <key>Hour</key>
+        <integer>15</integer>
+        <key>Minute</key>
+        <integer>40</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>STOCKBOT_REPO</key>
+        <string>/Users/USERNAME/src/stock-bot</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/weekly.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/weekly.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USERNAME/.stockbot</string>
+</dict>
+</plist>

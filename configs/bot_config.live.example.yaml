@@ -1,0 +1,47 @@
+# Example LIVE config. Copy to bot_config.live.yaml (gitignored) and run with
+# STOCKBOT_LIVE_CONFIRMED=1 — a human gate. NEVER raise quantity before edge is
+# proven net-of-cost.
+#
+# 立花(Mac ネイティブ)+ 制度信用(margin_system。一般信用は口座で拒否される)前提。env (公開鍵認証):
+#   STOCKBOT_TACHIBANA_ENV=production
+#   STOCKBOT_TACHIBANA_AUTH_ID=<sAuthId>  STOCKBOT_TACHIBANA_PRIVATE_KEY_FILE=<秘密鍵PEMのパス>
+#   STOCKBOT_TACHIBANA_SECOND_PASSWORD=<第2パスワード>  (発注/取消で必須)
+#   STOCKBOT_TACHIBANA_OCO_VERIFIED=1 (デモで守り検証後のみ)  STOCKBOT_LIVE_CONFIRMED=1
+#   ※ 認証ID/秘密鍵はデモ/本番で別セット・標準Web画面で取得。旧版の USER_ID/PASSWORD は廃止。
+
+mode: live_config
+broker: { kind: tachibana }         # Mac ネイティブ(live broker は立花のみ)
+symbols: ["7203"]
+
+risk:
+  max_daily_loss_jpy: 5000
+  max_consecutive_losses: 3
+  max_open_positions: 1
+  account_max_open_positions: 1     # 同時1ポジのみ(将来は複数に拡張)
+  account_max_daily_loss_jpy: 5000
+  disable_consecutive_loss_guards: false
+  # 🛑 レバレッジ上限: 建玉合計 ≤ 委託保証金 × この倍率。**1.0 = 現物相当から開始**。
+  # 上げるのは人間 commit のみ。委託保証金率 0.33 は「レバ 3.0 倍まで**建てられる**」という
+  # broker 側の上限であって、我々が自分に課す上限ではない — 満額 909,090円 で建てると
+  # bot の 30% ブレーカーは建値比 −3.0% で発火する(構造的に運用不能)。
+  # 0 にすると無効化されるので、live では**必ず正の値**にすること。
+  max_gross_notional_ratio: 1.0
+
+advisor_v2:
+  enabled: false                    # LLM は go/no-go・config 生成のみ(発注経路に入れない)
+  max_concurrent: 1
+
+holding:
+  intraday: { exec_kind: cash }     # 立花は一日信用(margin_oneday)非対応 → intraday は現物
+  multiday: { exec_kind: margin_system } # 制度信用6ヶ月
+
+# 方式B セレクタ: symbols(=ユニバース)を日足でスキャンし、最良の(銘柄,戦略)を自動 arm。
+# arm/保有中の銘柄だけ建値を取りに行く(数百銘柄でも軽い)。有効化の前提:
+#  - symbols に監視したいユニバースを列挙(各銘柄を hard_limits.allowed_symbols にも)
+#  - STOCKBOT_STRATEGY_CONFIG = configs/strategy_config.bnf.example.yaml(symbol:"*" の BNF テンプレ)
+#  - STOCKBOT_DAILY_CANDLES_DIR に各銘柄の日足CSVを用意(スキャン用)
+#  - account_max_open_positions=1(現状1ポジ。将来 N に拡張)
+selector:
+  enabled: false                    # true でセレクタ稼働(既定 false=従来の静的 active config)
+  rearm_interval_min: 60            # 再ランク間隔(日足駆動なので実質日次)
+  max_position_notional_jpy: 500000 # 高すぎる銘柄を arm しない: 直近終値×株数 > これ は除外。0=無効(将来緩める)

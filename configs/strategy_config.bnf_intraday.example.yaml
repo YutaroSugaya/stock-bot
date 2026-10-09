@@ -1,0 +1,53 @@
+# BNF intraday (day-trade) — PAPER example config (NOT the committed live default).
+#
+# The committed strategy_config.active.yaml stays no_trade (CLAUDE.md エッジ規律).
+# Use THIS file only for paper by pointing STOCKBOT_STRATEGY_CONFIG at it.
+#
+# Strategy (UNPROVEN):
+#   前日の確定日足が BNF パニック(25日線から-12%以上の急落 + 出来高1.5倍)
+#   → 当日、確定済み5分足で反発確認(陽線が直前バー高値を上抜け)して買い
+#   → 同日中に手仕舞い(TP = 25MA への戻りの一部 / SL = 当日安値の1tick下・上限2%)。
+#   holding_mode は intraday 固定: 14:50 引け前強制フラットの対象
+#   (ForceFlatten は HoldingMode==intraday の bot ポジを exec_kind に依らず返済する)。
+#
+# exec_kind は cash(現物): 立花 e支店 API は一日信用非対応(現物+制度信用6ヶ月のみ。
+# 一般信用は仕様に区分があるのに口座で拒否される — SupportsExecKind)。
+# 現物デイトレは同一銘柄1日1回転(買→売)なら差金決済に
+# 抵触しない。信用の回転が必要になったら margin_general(金利1日分)を検討。
+#
+# IMPORTANT: この戦略も exit 幾何を実行時に自前計算するため exit: は 0 のまま
+# (0 = hard-limit validation スキップ)。
+#
+# Universe: symbol "*" で bot_config の全銘柄に適用(前日パニック銘柄を Selector
+# が arm する)。live には hard_limits.live_allowed_strategies が空である限り
+# 進めない(エッジ証明後の人間 commit が必要)。
+
+config_id: "bnf_intraday_paper_v1"
+symbol: "*"
+strategy_name: bnf_intraday_reversion
+mode: paper_config
+holding_mode: intraday             # day-trade: no overnight(14:50 強制フラット対象)
+exec_kind: cash                    # 現物(立花は一日信用非対応。1日1回転なら差金決済 OK)
+ttl_minutes: 0
+
+entry:
+  direction: buy_only              # long-only (buy the panic bounce)
+  max_spread_ticks: 5
+
+exit:
+  # Overridden at runtime by the strategy (TP/SL/最大保有は Signal で自前計算).
+  take_profit_jpy: 0
+  stop_loss_jpy: 0
+  max_hold_minutes: 0
+  extension_max_minutes: 0
+  extension_unrealized_jpy: 0
+  early_exit_window_minutes: 0
+  early_exit_target_jpy: 0
+  ratchet_arm_jpy: 0
+  ratchet_giveback_jpy: 0
+
+risk:
+  quantity: 100
+  max_open_positions: 1
+  max_trades_in_this_window: 1     # 現物デイトレ: 同一銘柄の同日回転は1回まで(差金決済回避)
+  max_loss_in_this_window_jpy: 8000

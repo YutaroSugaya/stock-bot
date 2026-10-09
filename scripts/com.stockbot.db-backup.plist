@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">
+<!--
+  stock-bot postgres backup launchd agent。
+  毎日 03:10 (macOS local TZ = JST) に ~/.stockbot/db-backup.sh を実行し、
+  stockbot DB を pg_dump → gzip して ~/.stockbot/backups/ に保存する。
+  世代数は db-backup.sh の KEEP_GENERATIONS。postgres が停止していれば script 側で skip。
+
+  TCC 制約: launchd の background 実行は Desktop/ 配下のスクリプトを起動できない
+  (Operation not permitted)。そのため canonical script と保存先は ~/.stockbot/。
+
+  Load:   launchctl load ~/Library/LaunchAgents/com.stockbot.db-backup.plist
+  Unload: launchctl unload ~/Library/LaunchAgents/com.stockbot.db-backup.plist
+  確認:   launchctl list | grep stockbot
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockbot.db-backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/USERNAME/.stockbot/db-backup.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>10</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/db-backup.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USERNAME/.stockbot/logs/db-backup.launchd.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/USERNAME/.stockbot</string>
+</dict>
+</plist>

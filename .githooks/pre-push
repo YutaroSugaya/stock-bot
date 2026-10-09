@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# pre-push — push 前の二重化ゲート。Stop hook は ESC 中断/強制終了で発火しないので、push 境界でもう一段ゲートする。
+# 毎回: secret-scan / vet-integration / check-backend / fmt-check / guard-fast(arch-guard + 運用スクリプトの自己テスト)。
+# hook の自己テスト(make guard-hooks)は、push の範囲に enforcement の変更があるときと、
+# 前回の全件から 7 日たったときだけ(REVIEW_TASKS 決定 D-10。判定は .claude/hooks/pre-push-scope.sh)。
+# 速い順に並べる(1 本落ちたらそこで止まる)。
+#
+# 有効化(リポジトリで一度だけ): git config core.hooksPath .githooks
+# これで .githooks/ 配下の pre-commit / pre-push が両方有効になる。
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+# git が渡す push の範囲(<local ref> <local sha> <remote ref> <remote sha>)。下の make が
+# stdin を食わないうちに読み切る。端末から手で打ったとき(stdin が tty)は空 = 全件に倒れる。
+push_lines=""
+[ -t 0 ] || push_lines="$(cat)"
+
+# VSCode 等の GUI から push すると、ログインシェルを経由せず最小 PATH で
+# フックが起動し /opt/homebrew/bin(Homebrew の go)が PATH から抜ける。
+# 結果 `go: command not found` で push が落ちる。go/make の既定インストール先を前置する。
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:${HOME}/go/bin:${PATH}"
+
+echo "==> pre-push: secret scan"
+bash scripts/secret-scan.sh
+
+# integration タグ付きのテストは通常ビルドから外れるので、本体を変えると黙って
+# コンパイル不能になる。実 DB は要らない compile check だけをここで踏む。
+echo "==> pre-push: make vet-integration(integration タグの compile チェック)"
+make vet-integration
+
+echo "==> pre-push: make check-backend fmt-check guard-fast"
+make check-backend fmt-check guard-fast
+
+# hook の自己テスト。判定できないとき(lib が読めない・範囲が解けない・記録が無い)は全件に倒す。
+full=1
+reason="判定の lib(enforcement-paths.sh / pre-push-scope.sh)を読めない"
+# `-r` を先に見る: bash は存在しないファイルの `.` で if の中でもスクリプトごと終了する。
+if [ -r .claude/hooks/enforcement-paths.sh ] && [ -r .claude/hooks/pre-push-scope.sh ] \
+   && . .claude/hooks/enforcement-paths.sh && . .claude/hooks/pre-push-scope.sh; then
+    if reason="$(prepush_full_reason runtime/logs/pre-push-selftest-ok "$(date +%s)" "$PREPUSH_STAMP_TTL" <<< "$push_lines")"; then
+        full=1
+    else
+        full=0
+    fi
+fi
+if [ "$full" -eq 1 ]; then
+    echo "==> pre-push: hook の自己テストを全件(理由: $reason)"
+    make guard-hooks
+else
+    echo "==> pre-push: hook の自己テストは省略($reason)。全件は make guard-hooks か STOCKBOT_PREPUSH_FULL=1 git push"
+fi
+
+echo "==> pre-push: OK"

@@ -1,0 +1,32 @@
+# Live-mutable operating config. Committed default = paper.
+# live への切替は bot_config.live.yaml(gitignore)+ STOCKBOT_LIVE_CONFIRMED=1 が必須。
+
+mode: paper_config                  # paper_config | live_config | disabled
+broker: { kind: paper }             # paper | tachibana
+symbols: ["7203"]
+
+risk:
+  max_daily_loss_jpy: 5000          # per-symbol
+  max_consecutive_losses: 4
+  max_open_positions: 1             # per-symbol
+  account_max_open_positions: 1     # 全体で同時1ポジのみ(将来は複数に拡張)
+  account_max_daily_loss_jpy: 18000
+  disable_consecutive_loss_guards: false
+
+advisor_v2:
+  enabled: false                    # LLM 毎時 config 生成ループ・既定 OFF(paper 専用)
+  max_concurrent: 1
+  # 毎時 config 生成ループ(enabled=true のとき有効・bot mode paper 必須)。
+  # 有効化すると LLM が毎時 arming を担い、決定論 Selector の auto-arm は無効化される。
+  prompt_path: "prompts/generate_strategy_config.md"
+  cli_path: "claude"                # `claude` バイナリのパス
+  working_dir: ""                   # subprocess CWD(リポルート推奨・空=継承)
+  output_dir: ""                    # raw stdout 監査アーカイブ先・空=~/.stockbot/ai_output
+  scan_interval_sec: 60             # 決定論スキャン間隔(秒)・LLM不使用。急落はこの周期で検知
+  interval_min: 60                  # LLMハートビート(分)=無風時の上限間隔。新規トリガーは即発火
+  timeout_seconds: 120              # 1 回の claude 呼び出し timeout・0=120
+  top_n: 1                          # 毎 tick で advise する上位候補銘柄数・0=1
+
+holding:                            # 執行モード
+  intraday: { exec_kind: margin_oneday }
+  multiday: { exec_kind: margin_system }

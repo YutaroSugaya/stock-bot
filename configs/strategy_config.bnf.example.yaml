@@ -1,0 +1,53 @@
+# BNF panic-reversion — PAPER / FORWARD example config (NOT the committed live default).
+#
+# The committed strategy_config.active.yaml stays no_trade (CLAUDE.md エッジ規律:
+# エッジ証明前にロットを上げない / 既定は no_trade). Use THIS file only for paper
+# or minimum-lot forward testing by pointing STOCKBOT_STRATEGY_CONFIG_PATH at it.
+#
+# Strategy: buy a large/mid cap that has crashed >=12% below its 25-day MA on
+# >=1.5x panic volume; take profit on reversion to the 25-MA; 2.0×ATR(14) hard stop;
+# ~10-CALENDAR-day time stop (wall-clock ≈ 7 trading days). BNF holds several days, long only. exec_kind is
+# margin_system (制度信用6ヶ月) — used when cash funds are short; the Tachibana adapter
+# supports 現物(cash) and 制度信用(margin_system), NOT 一般信用 / 一日信用. Margin adds 金利/貸株料 + 追証 risk,
+# so keep size minimal until the edge is proven.(現物で回すなら exec_kind: cash に戻す。)
+#
+# IMPORTANT: BNF computes its OWN exit geometry per entry (TP = distance to the
+# 25-MA, SL = 2.0×ATR(14), max-hold = 10 calendar days wall-clock), set on the Signal at
+# runtime. The exit: block below is therefore IGNORED by this strategy — it is
+# kept at 0 so config hard-limit validation skips it (0 = unchecked).
+#
+# Universe: set symbol to "*" to apply this config to EVERY symbol in
+# bot_config.yaml (BNF is a universe scan across many names). The bot clones it
+# per symbol with a unique config_id and validates each against hard_limits.
+# Use a concrete code (e.g. "7203") to wire a single symbol instead. Seed daily
+# history for all target symbols via STOCKBOT_DAILY_CANDLES_DIR.
+
+config_id: "bnf_reversion_paper_v1"
+symbol: "*"                        # "*" = all bot_config symbols, or a code like "7203"
+strategy_name: bnf_reversion       # registered in cmd/stockbot
+mode: paper_config                 # paper_config until edge proven + human commit
+holding_mode: multiday             # BNF holds several days (NOT intraday)
+exec_kind: margin_system          # 制度信用6ヶ月。現物で回すなら cash
+ttl_minutes: 0                     # daily strategy: no intraday TTL expiry
+
+entry:
+  direction: buy_only              # BNF is long-only (buy the crash)
+  max_spread_ticks: 5
+
+exit:
+  # Overridden at runtime by the strategy (TP=dist-to-25MA, SL=2.0×ATR(14), hold=10 calendar days).
+  take_profit_jpy: 0
+  stop_loss_jpy: 0
+  max_hold_minutes: 0
+  extension_max_minutes: 0
+  extension_unrealized_jpy: 0
+  early_exit_window_minutes: 0
+  early_exit_target_jpy: 0
+  ratchet_arm_jpy: 0
+  ratchet_giveback_jpy: 0
+
+risk:
+  quantity: 100
+  max_open_positions: 1
+  max_trades_in_this_window: 3
+  max_loss_in_this_window_jpy: 8000

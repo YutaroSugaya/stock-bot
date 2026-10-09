@@ -1,0 +1,88 @@
+# Go build / test artifacts
+/bin/
+*.exe
+*.test
+*.out
+/vendor/
+# `go build ./cmd/<x>` を backend/ で打つと backend/<x> に実行ファイルが落ち、
+# git add -A で Mach-O が黙って混ざる。
+# cmd/ 配下の main パッケージ名をそのまま列挙する。
+/backend/advise
+/backend/backtest
+/backend/batch-probe
+/backend/demo-probe
+/backend/edge-eval
+/backend/edge-judge
+/backend/fetch-daily
+/backend/forward-report
+/backend/counterfactual
+/backend/holding-period
+/backend/jpx-stops
+/backend/daily-review
+/backend/live-probe
+/backend/migrate
+/backend/scan
+/backend/stockbot
+/backend/tick-table
+/backend/universe-screen
+/backend/xsection
+
+# env / secrets / live config
+.env
+# 立花 v4r9 秘密鍵。絶対にコミットしない。
+# PEM だけでなく DER(secrets/e_api_private_key.der は同じ鍵の別形式)も落とす。
+*.pem
+*.key
+*.der
+*.p12
+*.pfx
+/secrets/
+*.local.yaml
+bot_config.live.yaml
+configs/*.live.yaml
+
+# runtime state (flags, status json) + hook logs (.claude/hooks 生成物)。
+# 既定パス(config/env.go)は "runtime/emergency_stop.flag" という **相対パス**なので、
+# cwd=backend で起動すると backend/runtime/ 側に落ちる。両方除外する。
+/runtime/*.flag
+/runtime/*.json
+/runtime/logs/
+/backend/runtime/*.flag
+/backend/runtime/*.json
+/backend/runtime/logs/
+# AI advisor raw-output archive (audit forensics; never commit LLM stdout)
+/backend/runtime/ai_output/
+/runtime/ai_output/
+
+# データセット一式。運用 /backend/data(実体は ~/.stockbot/data への symlink)と
+# 研究用 /backend/data_research(調整済み)。どちらも git 管理外。
+# 運用側を Desktop 配下に置くと launchd から触れない(macOS TCC)ため、実体を repo の外に出してある。
+# Finder の複製("backend/data 2" 等)も拾う。ただし `/backend/data*` と広げると backend/database.go や
+# backend/datastore/ まで巻き込んで無言で無視するので、複製の綴りだけを明示的に列挙する。
+/backend/data
+/backend/data_research/
+# 研究用の広いユニバース(調整済み)。git 管理外。
+/backend/data_research_wide/
+/backend/data [0-9]*
+/backend/data copy*
+
+# OS / editor / interpreter caches
+__pycache__/
+.DS_Store
+.idea/
+.vscode/
+
+# Playwright MCP artifacts (console logs / page snapshots — never commit)
+/.playwright-mcp/
+
+# Claude Code machine-local settings (local test-DB DSN など — never commit)
+.claude/settings.local.json
+
+# 実弾の構成は履歴に焼かない(example は committed)
+strategy_config.live.yaml
+# live の追加テンプレートも稼働中の実体なので履歴に焼かない。
+strategy_config.live.*.yaml
+!strategy_config.live.example.yaml
+
+# 作業メモ(コミットしない)
+/PUBLISH_WORK.md
